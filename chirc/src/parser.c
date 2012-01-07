@@ -81,7 +81,7 @@ void parse_message(int clientSocket, int serverSocket)
                 msgstart[MAXMSG - msglength] = '\0';
             else
                 //terminate message at CRLF
-                msgend = '\0';
+                *msgend = '\0';
             strcat(msg, msgstart);
             msgstart = msgend + 2;
             parse(msg, clientSocket, serverSocket); //not sure yet where usr will come from
