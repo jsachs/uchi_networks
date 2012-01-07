@@ -175,7 +175,17 @@ void parse(char *msg, int clientSocket, int serverSocket) {
 		}    
 }
 
-
+/*
+void constr_reply(char code[4], char *target, char *param){
+    int replcode = atoi(code);
+    char *replmsg = (char *)malloc(510);
+    switch (replcode){
+        case 1:
+            
+            replmsg = "W
+    }
+}
+*/
 
 
 
