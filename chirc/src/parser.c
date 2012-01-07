@@ -46,7 +46,8 @@ void parse_message(int clientSocket, int serverSocket)
     int nbytes = 0;
     int truncated = 0;
     int CRLFsplit = 0;
-	
+    memset(msg, '\0', MAXMSG - 1);
+    
 	while (1) {
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) <= 0) {
             fprintf(stderr, "ERROR: recv failure\n");
