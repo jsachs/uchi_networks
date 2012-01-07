@@ -38,7 +38,7 @@ void parse_message(int clientSocket, int serverSocket)
 {
     char buf[MAXMSG + 1];
     char msg[MAXMSG - 1]; //max length 510 characters + \0
-    char *msgstart = buf;
+    char *msgstart;
     char *msgend;
     int remaind;
     int msglength = 0;
@@ -49,6 +49,7 @@ void parse_message(int clientSocket, int serverSocket)
     memset(msg, '\0', MAXMSG - 1);
     
 	while (1) {
+        msgstart = buf;
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) <= 0) {
             fprintf(stderr, "ERROR: recv failure\n");
             exit(-1);
