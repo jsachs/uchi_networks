@@ -26,9 +26,11 @@ void constr_reply(char code[4], char *target, char *param);
 
 char *nick;
 char *user;
+char *fullname;
 int hasnick = 0;
 int hasuser = 0;
-/* This message will need to be changed!!! */
+
+/* These messages will be used temporarily */
 char *msg_serv = ":bar.example.com";
 char *msg_welc = ":Welcome to the Internet Relay Network";
 char *msg_clnt = "@foo.example.com\r\n";
@@ -38,20 +40,20 @@ void parse_message(int clientSocket, int serverSocket)
 {
     char buf[MAXMSG + 1];
     char msg[MAXMSG - 1]; //max length 510 characters + \0
-    char *msgstart;
-    char *msgend;
+    char *msgstart, *msgend;
     int remaind;
     int msglength = 0;
     int morelength = 0;
     int nbytes = 0;
     int truncated = 0;
     int CRLFsplit = 0;
+    
     memset(msg, '\0', MAXMSG - 1);
     
 	while (1) {
         msgstart = buf;
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) <= 0) {
-            fprintf(stderr, "ERROR: recv failure\n");
+            perror("ERROR: recv failure");
             exit(-1);
         }
         buf[nbytes] = '\0';
@@ -78,12 +80,10 @@ void parse_message(int clientSocket, int serverSocket)
         //get and parse as many complete messages as buf contains
         while((msgend = strstr(msgstart, "\r\n")) != NULL){
             morelength = msgend - msgstart;
-            if(msglength + morelength > MAXMSG - 2) //msg is too long
-                //terminate message at max allowed characters
-                msgstart[MAXMSG - msglength] = '\0';
+            if(msglength + morelength > MAXMSG - 2)  //msg is too long
+                msgstart[MAXMSG - msglength] = '\0'; //terminate message at max allowed characters
             else
-                //terminate message at CRLF
-                *msgend = '\0';
+                *msgend = '\0';                      //terminate message at CRLF
             strcat(msg, msgstart);
             msgstart = msgend + 2;
             parse(msg, clientSocket, serverSocket); //not sure yet where usr will come from
@@ -136,12 +136,13 @@ void parse(char *msg, int clientSocket, int serverSocket) {
         counter++;
     }
     if(strcmp(params[0], "NICK") == 0){
-        nick = params[1];
+        nick    = params[1];
         hasnick = 1;
     }
     else if(strcmp(params[0], "USER") == 0){
-        user = params[1];
-        hasuser = 1;
+        user     = params[1];
+        fullname = params[4];
+        hasuser  = 1;
     }
     else{
         //construct "invalid command" reply

@@ -22,8 +22,9 @@
 void parse_message(int clientSocket, int serverSocket);
 
 /* Initialize lists of nicks/users and channels */
-//list_t userlist; list_init(&userlist);
-//list_t chanlist; list_init(&chanlist);
+list_t userlist, chanlist;
+list_init(& userlist);
+list_init(& chanlist);
 
 struct person {
 	char* nick;
@@ -125,6 +126,7 @@ int main(int argc, char *argv[])
 			close(serverSocket);
 			exit(-1);
 		}
+
         /* eventually all this will go in a separate function called by pthread, along with associated variables 
         if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0){
             perror("getnameinfo failed");
@@ -134,7 +136,9 @@ int main(int argc, char *argv[])
         }
         client.address = hostname;
         */
+        
         //and we'll need to add person to our userlist; we'll add nick, user, etc later as appropriate
+
 		parse_message(clientSocket, serverSocket);
 	}
 
