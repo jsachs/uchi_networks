@@ -143,7 +143,6 @@ void parse(char *msg, int clientSocket, int serverSocket) {
         user = params[1];
         hasuser = 1;
     }
-    //reply message should be sent if both have been sent, but probably outside of parse function
     else{
         //construct "invalid command" reply
     }
