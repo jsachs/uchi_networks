@@ -15,8 +15,20 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include "reply.h"
+#include "simclist.h"
 
 void parse_message(int clientSocket, int serverSocket);
+
+/* Initialize lists of nicks/users and channels */
+list_t userlist; list_init(&userlist);
+list_t chanlist; list_init(&chanlist);
+
+struct person {
+	char* nick;
+	char* user;
+	char* fullname;
+	char* address;
+};
 
 int main(int argc, char *argv[])
 {
@@ -42,7 +54,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "ERROR: You must specify an operator password\n");
 		exit(-1);
 	}
-
+	
 	/* Initialize all the crap for sockets */
 
 	int serverSocket;  // Used to listen for connections
