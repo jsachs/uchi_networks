@@ -96,7 +96,7 @@ void parse_message(int clientSocket, int serverSocket)
         //deal with remainder of recv'd input
         morelength = strlen(msgstart);
         remaind = MAXMSG - msglength - 1; //i.e. how many more chars can fit in msg, including null terminator
-        if (msgstart[morelength - 2] == '\r') 
+        if (msgstart[morelength - 1] == '\r') 
             //CRLF might be split between two packets--we'll need to check when we read in the next one
             CRLFsplit = 1;
         if (morelength <= remaind){
