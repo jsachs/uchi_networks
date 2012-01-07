@@ -20,8 +20,9 @@
 void parse_message(int clientSocket, int serverSocket);
 
 /* Initialize lists of nicks/users and channels */
-//list_t userlist; list_init(&userlist);
-//list_t chanlist; list_init(&chanlist);
+list_t userlist, chanlist;
+list_init(& userlist);
+list_init(& chanlist);
 
 struct person {
 	char* nick;
@@ -121,6 +122,8 @@ int main(int argc, char *argv[])
 			close(serverSocket);
 			exit(-1);
 		}
+		
+		
 		
 		parse_message(clientSocket, serverSocket);
 	}
