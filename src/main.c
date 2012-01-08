@@ -19,11 +19,6 @@
 
 void parse_message(int clientSocket, int serverSocket);
 
-/* Initialize lists of nicks/users and channels */
-list_t userlist, chanlist;
-list_init(& userlist);
-list_init(& chanlist);
-
 struct person {
 	char* nick;
 	char* user;
@@ -33,6 +28,11 @@ struct person {
 
 int main(int argc, char *argv[])
 {
+	/* Initialize lists of nicks/users and channels */
+	list_t userlist, chanlist;
+	list_init(& userlist);
+	list_init(& chanlist);
+	
 	int opt;
 	char *port = "6667", *passwd = NULL;
 
