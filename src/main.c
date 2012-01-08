@@ -28,10 +28,11 @@ struct person {
 	char* address;
 };
 
+list_t userlist, chanlist;
+
 int main(int argc, char *argv[])
 {
 	/* Initialize lists of nicks/users and channels */
-	list_t userlist, chanlist;
 	list_init(& userlist);
 	list_init(& chanlist);
 	
@@ -127,7 +128,7 @@ int main(int argc, char *argv[])
 			exit(-1);
 		}
 
-        /* eventually all this will go in a separate function called by pthread, along with associated variables 
+        /* eventually all this will go in a separate function called by pthread, along with associated variables */ 
         if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0){
             perror("getnameinfo failed");
             close(clientSocket);
@@ -135,7 +136,7 @@ int main(int argc, char *argv[])
             exit(-1);
         }
         client.address = hostname;
-        */
+        
         
         //and we'll need to add person to our userlist; we'll add nick, user, etc later as appropriate
 
