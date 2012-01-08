@@ -144,7 +144,6 @@ void parse(char *msg, int clientSocket, int serverSocket) {
         fullname = params[4];
         hasuser  = 1;
     }
-    //reply message should be sent if both have been sent, but probably outside of parse function
     else{
         //construct "invalid command" reply
     }
@@ -176,7 +175,17 @@ void parse(char *msg, int clientSocket, int serverSocket) {
 		}    
 }
 
-
+/*
+void constr_reply(char code[4], char *target, char *param){
+    int replcode = atoi(code);
+    char *replmsg = (char *)malloc(510);
+    switch (replcode){
+        case 1:
+            
+            replmsg = "W
+    }
+}
+*/
 
 
 

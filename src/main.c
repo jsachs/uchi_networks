@@ -17,6 +17,8 @@
 #include "reply.h"
 #include "simclist.h"
 
+#define HOSTNAMELEN 30
+
 void parse_message(int clientSocket, int serverSocket);
 
 struct person {
@@ -35,6 +37,8 @@ int main(int argc, char *argv[])
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;
+    char hostname[HOSTNAMELEN];
+    struct person client;
 
 	while ((opt = getopt(argc, argv, "p:o:h")) != -1)
 		switch (opt)
@@ -122,14 +126,24 @@ int main(int argc, char *argv[])
 			close(serverSocket);
 			exit(-1);
 		}
-		
-		
-		
+
+        /* eventually all this will go in a separate function called by pthread, along with associated variables 
+        if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0){
+            perror("getnameinfo failed");
+            close(clientSocket);
+            close(serverSocket);
+            exit(-1);
+        }
+        client.address = hostname;
+        */
+        
+        //and we'll need to add person to our userlist; we'll add nick, user, etc later as appropriate
+
 		parse_message(clientSocket, serverSocket);
 	}
 
 	close(serverSocket);
-
+    
 	return 0;
 }
 
