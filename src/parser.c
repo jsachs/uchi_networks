@@ -18,22 +18,15 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include "reply.h"
+#include "simclist.h"
+#include "ircstructs.h"
 
 #define MAXMSG 512
 
 void parse(char *msg, int clientSocket, int serverSocket);
 void constr_reply(char code[4], char *target, char *param);
 
-char *nick;
-char *user;
-char *fullname;
-int hasnick = 0;
-int hasuser = 0;
-
-/* These messages will be used temporarily */
-char *msg_serv = ":bar.example.com";
-char *msg_welc = ":Welcome to the Internet Relay Network";
-char *msg_clnt = "@foo.example.com\r\n";
+extern list_t userlist, chanlist;
 
 //parse incoming data into messages, to deal with as needed
 void parse_message(int clientSocket, int serverSocket)
@@ -119,6 +112,9 @@ void parse(char *msg, int clientSocket, int serverSocket) {
     int counter = 0;
     int paramcounter = 0;
     int paramnum = 0;
+    char reply[MAXMSG];
+    person *clientpt = (person *)list_get_at(&userlist, 0);
+
     while(msg[counter] != '\0'){
         if (msg[counter] == ' '){
             params[paramnum][paramcounter] = '\0';
@@ -136,56 +132,73 @@ void parse(char *msg, int clientSocket, int serverSocket) {
         counter++;
     }
     if(strcmp(params[0], "NICK") == 0){
-        nick    = params[1];
-        hasnick = 1;
+        if (clientpt->nick) {
+            clientpt->nick = params[1];
+            //constr_reply(/*reply to change nicknames*/);
+            //and send the reply
+        }
+        else{
+            clientpt->nick = params[1];
+            if(clientpt->user){
+                constr_reply("001", clientpt->nick, reply);
+                if(send(clientSocket, reply, strlen(reply), 0) <= 0)
+                {
+                    perror("Socket send() failed");
+                    close(serverSocket);
+                    close(clientSocket);
+                    exit(-1);
+                }
+            }
+        }
     }
     else if(strcmp(params[0], "USER") == 0){
-        user     = params[1];
-        fullname = params[4];
-        hasuser  = 1;
+        if (clientpt->user && clientpt->nick) {
+            //error message: already registered
+        }
+        else{
+            clientpt->user     = params[1];
+            clientpt->fullname = params[4];
+            if(clientpt->nick){
+                constr_reply("001", clientpt->nick, reply);
+                if(send(clientSocket, reply, strlen(reply), 0) <= 0)
+                {
+                    perror("Socket send() failed");
+                    close(serverSocket);
+                    close(clientSocket);
+                    exit(-1);
+                }
+            }   
+        }
     }
     else{
-        //construct "invalid command" reply
+        //error message: invalid command
     }
-    
-    if(hasnick && hasuser) {
-			char *msg = malloc(snprintf(NULL, 0, "%s %s %s %s %s!%s%s", msg_serv,
-																		RPL_WELCOME,
-																		nick,
-																		msg_welc,
-																		nick,
-																		user,
-																		msg_clnt) + 1);
-															
-			sprintf(msg, "%s %s %s %s %s!%s%s", msg_serv,RPL_WELCOME,
-											 			 nick,
-											 			 msg_welc,
-											             nick,
-											             user,
-											             msg_clnt);
-			
-			/* After accept() returns a new socket, we use it to send a message to the client */
-			if(send(clientSocket, msg, strlen(msg), 0) <= 0)
-			{
-				perror("Socket send() failed");
-				close(serverSocket);
-				close(clientSocket);
-				exit(-1);
-			}
-		}    
 }
 
-/*
-void constr_reply(char code[4], char *target, char *param){
+
+void constr_reply(char code[4], char *target, char *reply){
+    person *clientpt = (person *)list_get_at(&userlist, 0);
     int replcode = atoi(code);
-    char *replmsg = (char *)malloc(510);
+    char replmsg[MAXMSG];
+    //char prefix[MAXMSG];
+    char *preset = malloc(512);
+    char *user = clientpt->user;
+    char *msg_clnt = clientpt->address;
+    //prefix[0] = ':';
+    //strcpy(prefix + 1, servername);
+    char *prefix = ":foo.example.com";
     switch (replcode){
         case 1:
-            
-            replmsg = "W
+            preset  = ":Welcome to the Internet Relay Network";
+            sprintf(replmsg, "%s %s!%s@%s", preset, target, user, msg_clnt);
+            break;
+        default:
+            break;
     }
+    snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, target, replmsg);
+    strcat(reply, "\r\n");
 }
-*/
+
 
 
 

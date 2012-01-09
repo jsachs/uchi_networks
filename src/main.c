@@ -16,17 +16,12 @@
 #include <netdb.h>
 #include "reply.h"
 #include "simclist.h"
+#include "ircstructs.h"
 
 #define HOSTNAMELEN 30
 
-void parse_message(int clientSocket, int serverSocket);
 
-struct person {
-	char* nick;
-	char* user;
-	char* fullname;
-	char* address;
-};
+void parse_message(int clientSocket, int serverSocket);
 
 list_t userlist, chanlist;
 
@@ -39,7 +34,7 @@ int main(int argc, char *argv[])
 	int opt;
 	char *port = "6667", *passwd = NULL;
     char hostname[HOSTNAMELEN];
-    struct person client;
+    person client = {NULL, NULL, NULL, NULL};
 
 	while ((opt = getopt(argc, argv, "p:o:h")) != -1)
 		switch (opt)
@@ -136,7 +131,7 @@ int main(int argc, char *argv[])
             exit(-1);
         }
         client.address = hostname;
-        
+        list_append(&userlist, &client);
         
         //and we'll need to add person to our userlist; we'll add nick, user, etc later as appropriate
 
