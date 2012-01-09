@@ -23,6 +23,7 @@
 
 #define MAXMSG 512
 
+void parse_message(int clientSocket, int serverSocket);
 void parse(char *msg, int clientSocket, int serverSocket);
 void constr_reply(char code[4], char *nick, char *param);
 
@@ -170,11 +171,11 @@ void parse(char *msg, int clientSocket, int serverSocket) {
             }   
         }
     }
-    else{
+    else
+    {
         //error message: invalid command
     }
 }
-
 
 void constr_reply(char code[4], char *nick, char *reply){  // maybe this should take a person as an argument?
     person *clientpt = (person *)list_get_at(&userlist, 0);

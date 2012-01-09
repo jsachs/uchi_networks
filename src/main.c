@@ -124,7 +124,8 @@ int main(int argc, char *argv[])
 		}
 
         /* eventually all this will go in a separate function called by pthread, along with associated variables */ 
-        if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0){
+        if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0)
+        {
             perror("getnameinfo failed");
             close(clientSocket);
             close(serverSocket);
@@ -134,7 +135,6 @@ int main(int argc, char *argv[])
         list_append(&userlist, &client);
         
         //and we'll need to add person to our userlist; we'll add nick, user, etc later as appropriate
-
 		parse_message(clientSocket, serverSocket);
 	}
 
