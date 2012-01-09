@@ -24,7 +24,7 @@
 #define MAXMSG 512
 
 void parse(char *msg, int clientSocket, int serverSocket);
-void constr_reply(char code[4], char *target, char *param);
+void constr_reply(char code[4], char *nick, char *param);
 
 extern list_t userlist, chanlist;
 
@@ -176,7 +176,7 @@ void parse(char *msg, int clientSocket, int serverSocket) {
 }
 
 
-void constr_reply(char code[4], char *target, char *reply){
+void constr_reply(char code[4], char *nick, char *reply){  // maybe this should take a person as an argument?
     person *clientpt = (person *)list_get_at(&userlist, 0);
     int replcode = atoi(code);
     char replmsg[MAXMSG];
@@ -188,14 +188,14 @@ void constr_reply(char code[4], char *target, char *reply){
     //strcpy(prefix + 1, servername);
     char *prefix = ":foo.example.com";
     switch (replcode){
-        case 1:
+        case 1:  // 001
             preset  = ":Welcome to the Internet Relay Network";
-            sprintf(replmsg, "%s %s!%s@%s", preset, target, user, msg_clnt);
+            sprintf(replmsg, "%s %s!%s@%s", preset, nick, user, msg_clnt);
             break;
         default:
             break;
     }
-    snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, target, replmsg);
+    snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, nick, replmsg);
     strcat(reply, "\r\n");
 }
 
