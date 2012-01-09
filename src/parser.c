@@ -2,9 +2,8 @@
  *
  *  CMSC 23300 / 33300 - Networks and Distributed Systems
  *  
- *  A very simple socket client. Reads at most 100 bytes from a socket and quits.
- *  
- *  Written by: Borja Sotomayor
+ * sachs_sandler 
+ * 
  *
  */
 
@@ -33,14 +32,14 @@ extern list_t userlist, chanlist;
 void parse_message(int clientSocket, int serverSocket)
 {
     char buf[MAXMSG + 1];
-    char msg[MAXMSG - 1]; //max length 510 characters + \0
-    char *msgstart, *msgend;
-    int remaind;
-    int msglength = 0;
-    int morelength = 0;
-    int nbytes = 0;
-    int truncated = 0;
-    int CRLFsplit = 0;
+    char msg[MAXMSG - 1];     // max length 510 characters + \0
+    char *msgstart, *msgend;  // tools to keep track of beginning/end of message
+    int remaind;              // everything in buffer that's after the \r\n
+    int msglength = 0;        // keeps track of everything send into message
+    int morelength = 0;       // how much is going to be sent from remainder to message
+    int nbytes = 0;           // used in constructing message to be sent
+    int truncated = 0;        // used to track occurence of the end of a truncated message
+    int CRLFsplit = 0;        // tracks the \r\n in difference message receptions
     
     memset(msg, '\0', MAXMSG - 1);
     
@@ -51,7 +50,7 @@ void parse_message(int clientSocket, int serverSocket)
             exit(-1);
         }
         buf[nbytes] = '\0';
-        if(CRLFsplit){
+        if(CRLFsplit){      // procedure to deal with \r\n split across messages
             CRLFsplit = 0;
             if (buf[0] == '\n') {
                 msgstart = buf + 1;
@@ -80,7 +79,7 @@ void parse_message(int clientSocket, int serverSocket)
                 *msgend = '\0';                      //terminate message at CRLF
             strcat(msg, msgstart);
             msgstart = msgend + 2;
-            parse(msg, clientSocket, serverSocket); //not sure yet where usr will come from
+            parse(msg, clientSocket, serverSocket);
             memset(msg, '\0', MAXMSG - 1);
             msglength = 0;
             if(msgstart == NULL)
@@ -109,13 +108,14 @@ void parse_message(int clientSocket, int serverSocket)
 }
 
 void parse(char *msg, int clientSocket, int serverSocket) {
-    char params[16][511]; //param[0] is command
+    char params[16][511]; // param[0] is command
     int counter = 0;
     int paramcounter = 0;
     int paramnum = 0;
     char reply[MAXMSG];
     person *clientpt = (person *)list_get_at(&userlist, 0);
-
+    // process to break a message into its component commands/parameters
+    // potentially clean this up to ultilize strtok() at some point
     while(msg[counter] != '\0'){
         if (msg[counter] == ' '){
             params[paramnum][paramcounter] = '\0';
@@ -132,6 +132,8 @@ void parse(char *msg, int clientSocket, int serverSocket) {
         }
         counter++;
     }
+    // Begin identifying possible commands
+    // this may become a separate function/module in the future
     if(strcmp(params[0], "NICK") == 0){
         if (clientpt->nick) {
             clientpt->nick = params[1];
@@ -177,17 +179,17 @@ void parse(char *msg, int clientSocket, int serverSocket) {
     }
 }
 
-void constr_reply(char code[4], char *nick, char *reply){  // maybe this should take a person as an argument?
-    person *clientpt = (person *)list_get_at(&userlist, 0);
+void constr_reply(char code[4], char *nick, char *reply){   // maybe this should take a person as an argument?
+    person *clientpt = (person *)list_get_at(&userlist, 0); // rather than use 0, might use pthread id for future indexing
     int replcode = atoi(code);
     char replmsg[MAXMSG];
     //char prefix[MAXMSG];
-    char *preset = malloc(512);
+    char *preset = malloc(MAXMSG);
     char *user = clientpt->user;
     char *msg_clnt = clientpt->address;
     //prefix[0] = ':';
     //strcpy(prefix + 1, servername);
-    char *prefix = ":foo.example.com";
+    char *prefix = ":foo.example.com"; // yes, this is hand-wavey. we will get server name later
     switch (replcode){
         case 1:  // 001
             preset  = ":Welcome to the Internet Relay Network";

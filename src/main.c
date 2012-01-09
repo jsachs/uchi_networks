@@ -4,6 +4,8 @@
  *
  *  main() code for chirc project
  *
+ * sachs_sandler
+ *
  */
 #include <stdio.h>
 #include <stdlib.h>
