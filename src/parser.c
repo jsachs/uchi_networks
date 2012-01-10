@@ -46,7 +46,7 @@ void parse_message(int clientSocket, int serverSocket)
     
 	while (1) {
         msgstart = buf;
-        if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) < 0) {
+        if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) == -1) {
             perror("ERROR: recv failure");
             close(clientSocket);
             close(serverSocket);
