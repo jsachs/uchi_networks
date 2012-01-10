@@ -192,7 +192,7 @@ void constr_reply(char code[4], char *nick, char *reply){   // maybe this should
     int replcode = atoi(code);
     char replmsg[MAXMSG];
     //char prefix[MAXMSG];
-    char *preset = malloc(MAXMSG);
+    char preset[MAXMSG];
     char *user = clientpt->user;
     char *msg_clnt = clientpt->address;
     //prefix[0] = ':';
@@ -200,7 +200,7 @@ void constr_reply(char code[4], char *nick, char *reply){   // maybe this should
     char *prefix = ":foo.example.com"; // yes, this is hand-wavey. we will get server name later
     switch (replcode){
         case 1:  // 001
-            preset  = ":Welcome to the Internet Relay Network";
+            strcpy(preset, ":Welcome to the Internet Relay Network");
             sprintf(replmsg, "%s %s!%s@%s", preset, nick, user, msg_clnt);
             break;
         default:
