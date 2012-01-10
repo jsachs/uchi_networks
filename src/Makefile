@@ -1,6 +1,6 @@
 OBJS = main.o parser.o simclist.o
 DEPS = $(OBJS:.o=.d)
-CC = gcc-4.2
+CC = gcc
 CFLAGS = -I../../include -g3 -Wall -fpic -std=gnu99 -MMD -MP -DDEBUG
 BIN = ../chirc
 LDLIBS = -pthread
