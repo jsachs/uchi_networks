@@ -55,8 +55,7 @@ void parse_message(int clientSocket, int serverSocket)
         if(nbytes == 0){
             printf("Connection closed by client\n");
             close(clientSocket);
-            close(serverSocket);
-            exit(0);
+            break;
         }
         buf[nbytes] = '\0';
         if(CRLFsplit){      // procedure to deal with \r\n split across messages
@@ -209,6 +208,7 @@ void constr_reply(char code[4], char *nick, char *reply){   // maybe this should
     }
     snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, nick, replmsg);
     strcat(reply, "\r\n");
+    return;
 }
 
 
