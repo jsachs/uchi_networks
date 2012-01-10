@@ -48,13 +48,14 @@ void parse_message(int clientSocket, int serverSocket)
         msgstart = buf;
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) < 0) {
             perror("ERROR: recv failure");
-            if (errno == EINTR ) 
-                continue;            
-            else
-                exit(-1);
+            close(clientSocket);
+            close(serverSocket);
+            exit(-1);
         }
         if(nbytes == 0){
             printf("Connection closed by client\n");
+            close(clientSocket);
+            close(serverSocket);
             exit(0);
         }
         buf[nbytes] = '\0';
