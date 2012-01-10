@@ -16,6 +16,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <errno.h>
 #include "reply.h"
 #include "simclist.h"
 #include "ircstructs.h"
@@ -45,9 +46,16 @@ void parse_message(int clientSocket, int serverSocket)
     
 	while (1) {
         msgstart = buf;
-        if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) <= 0) {
+        if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) < 0) {
             perror("ERROR: recv failure");
-            exit(-1);
+            if (errno == EINTR ) 
+                continue;            
+            else
+                exit(-1);
+        }
+        if(nbytes == 0){
+            printf("Connection closed by client\n");
+            exit(0);
         }
         buf[nbytes] = '\0';
         if(CRLFsplit){      // procedure to deal with \r\n split across messages
