@@ -153,7 +153,7 @@ void parse(char *msg, int clientSocket, int serverSocket) {
             clientpt->nick = params[1];
             if(clientpt->user){
                 constr_reply("001", clientpt->nick, reply);
-                if(send(clientSocket, reply, strlen(reply), 0) <= 0)
+                if(send(clientSocket, reply, strlen(reply), 0) == -1)
                 {
                     perror("Socket send() failed");
                     close(serverSocket);
@@ -172,7 +172,7 @@ void parse(char *msg, int clientSocket, int serverSocket) {
             clientpt->fullname = params[4];
             if(clientpt->nick){
                 constr_reply("001", clientpt->nick, reply);
-                if(send(clientSocket, reply, strlen(reply), 0) <= 0)
+                if(send(clientSocket, reply, strlen(reply), 0) == -1)
                 {
                     perror("Socket send() failed");
                     close(serverSocket);
