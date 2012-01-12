@@ -45,6 +45,7 @@ struct workerArgs
 void parse_message(int clientSocket);
 void *accept_clients(void *args);
 void *service_single_client(void *args);
+int fun_seek(const void *el, const void *indicator);
 
 list_t userlist, chanlist;
 
@@ -56,6 +57,11 @@ int main(int argc, char *argv[])
 	int opt;
 	char *port = "6667", *passwd = NULL;
     struct serverArgs *sa;
+
+	if(list_attributes_seeker(&userlist, fun_seek) == -1){
+		perror("list fail");
+		exit(-1);
+	}
 
 	while ((opt = getopt(argc, argv, "p:o:h")) != -1)
 		switch (opt)
@@ -130,7 +136,7 @@ void *accept_clients(void *args)
 	int yes = 1;
 	
 	char hostname[HOSTNAMELEN];
-    person client = {NULL, NULL, NULL, NULL};
+    person client = {-1, NULL, NULL, NULL, NULL};
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
@@ -199,6 +205,7 @@ void *accept_clients(void *args)
         	close(serverSocket);
         	pthread_exit(NULL);
     	}
+    	client.fd = clientSocket;
     	client.address = hostname;
     	list_append(&userlist, &client);
 
@@ -249,4 +256,44 @@ void *service_single_client(void *args) {
 	
 	close(socket);
 	pthread_exit(NULL);
+}
+
+int fun_seek(const void *el, const void *indicator){
+    if (el == NULL || indicator == NULL){
+        perror("bad argument to fun_seek");
+        return 0;
+    }
+    person *client = (person *)el;
+    el_indicator *el_info;
+    el_info = (el_indicator *)indicator;
+    int field = el_info->field;
+    char *value;
+    int fd;
+    if (field == 4)
+        fd = el_info->fd;
+    else
+        value = el_info->value;
+    if (value == NULL || field < 0 || field > 4){
+        perror("bad argument to fun_seek");
+        return 0;
+    }
+    switch (field) {
+        case 0:
+            return (client->nick == value)?1:0;
+            break;
+        case 1:
+            return (client->user == value)?1:0;
+            break;
+        case 2:
+            return (client->fullname == value)?1:0;
+            break;
+        case 3:
+            return (client->address == value)?1:0;
+            break;
+        case 4:
+            return (client->fd == fd)?1:0;
+        default:
+            return 0;
+            break;
+    }
 }

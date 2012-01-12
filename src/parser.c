@@ -121,7 +121,12 @@ void parse(char *msg, int clientSocket) {
     int paramcounter = 0;
     int paramnum = 0;
     char reply[MAXMSG];
-    person *clientpt = (person *)list_get_at(&userlist, 0);
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    
+    //may want to modify this to get by pthread id, not fd
+    seek_arg->field = FD;
+    seek_arg->fd = clientSocket;
+    person *clientpt = (person *)list_seek(&userlist, seek_arg);
     // process to break a message into its component commands/parameters
     // potentially clean this up to ultilize strtok() at some point
     while(msg[counter] != '\0'){
