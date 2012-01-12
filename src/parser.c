@@ -27,6 +27,7 @@ void parse_message(int clientSocket, int serverSocket);
 void parse(char *msg, int clientSocket, int serverSocket);
 void constr_reply(char code[4], char *nick, char *param);
 
+
 extern list_t userlist, chanlist;
 
 //parse incoming data into messages, to deal with as needed
@@ -121,7 +122,11 @@ void parse(char *msg, int clientSocket, int serverSocket) {
     int paramcounter = 0;
     int paramnum = 0;
     char reply[MAXMSG];
-    person *clientpt = (person *)list_get_at(&userlist, 0);
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    //may actually want to get by pthread id, not fd
+    seek_arg->field = FD;
+    seek_arg->fd = clientSocket;
+    person *clientpt = (person *)list_seek(&userlist, seek_arg);
     // process to break a message into its component commands/parameters
     // potentially clean this up to ultilize strtok() at some point
     while(msg[counter] != '\0'){
@@ -188,7 +193,11 @@ void parse(char *msg, int clientSocket, int serverSocket) {
 }
 
 void constr_reply(char code[4], char *nick, char *reply){   // maybe this should take a person as an argument?
-    person *clientpt = (person *)list_get_at(&userlist, 0); // rather than use 0, might use pthread id for future indexing
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    //may actually want to get by pthread id, not nick
+    seek_arg->field = NICK;
+    seek_arg->value = nick;
+    person *clientpt = (person *)list_seek(&userlist, seek_arg); 
     int replcode = atoi(code);
     char replmsg[MAXMSG];
     //char prefix[MAXMSG];

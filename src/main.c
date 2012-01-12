@@ -22,21 +22,26 @@
 
 #define HOSTNAMELEN 30
 
-
 void parse_message(int clientSocket, int serverSocket);
+int fun_seek(const void *el, const void *indicator);
 
 list_t userlist, chanlist;
 
 int main(int argc, char *argv[])
 {
-	/* Initialize lists of nicks/users and channels */
+	/* Initialize lists of nicks/users and channels and list seeker */
 	list_init(& userlist);
 	list_init(& chanlist);
-	
+    
+    if(list_attributes_seeker(&userlist, fun_seek) == -1){
+        perror("list fail");
+        exit(-1);
+    }
+
 	int opt;
 	char *port = "6667", *passwd = NULL;
     char hostname[HOSTNAMELEN];
-    person client = {NULL, NULL, NULL, NULL};
+    person client = {-1, NULL, NULL, NULL, NULL};
 
 	while ((opt = getopt(argc, argv, "p:o:h")) != -1)
 		switch (opt)
@@ -58,6 +63,7 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 	
+    
 	/* Initialize all the crap for sockets */
 
 	int serverSocket;  // Used to listen for connections
@@ -124,7 +130,7 @@ int main(int argc, char *argv[])
 			close(serverSocket);
 			exit(-1);
 		}
-
+        client.fd = clientSocket;
         /* eventually all this will go in a separate function called by pthread, along with associated variables */ 
         if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0)
         {
@@ -135,7 +141,7 @@ int main(int argc, char *argv[])
         }
         client.address = hostname;
         list_append(&userlist, &client);
-        
+
         //and we'll need to add person to our userlist; we'll add nick, user, etc later as appropriate
 		parse_message(clientSocket, serverSocket);
 	}
@@ -143,5 +149,45 @@ int main(int argc, char *argv[])
 	close(serverSocket);
     
 	return 0;
+}
+
+int fun_seek(const void *el, const void *indicator){
+    if (el == NULL || indicator == NULL){
+        perror("bad argument to fun_seek");
+        return 0;
+    }
+    person *client = (person *)el;
+    el_indicator *el_info;
+    el_info = (el_indicator *)indicator;
+    int field = el_info->field;
+    char *value;
+    int fd;
+    if (field == 4)
+        fd = el_info->fd;
+    else
+        value = el_info->value;
+    if (value == NULL || field < 0 || field > 4){
+        perror("bad argument to fun_seek");
+        return 0;
+    }
+    switch (field) {
+        case 0:
+            return (client->nick == value)?1:0;
+            break;
+        case 1:
+            return (client->user == value)?1:0;
+            break;
+        case 2:
+            return (client->fullname == value)?1:0;
+            break;
+        case 3:
+            return (client->address == value)?1:0;
+            break;
+        case 4:
+            return (client->fd == fd)?1:0;
+        default:
+            return 0;
+            break;
+    }
 }
 
