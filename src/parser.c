@@ -17,20 +17,21 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <errno.h>
+#include <pthread.h>
 #include "reply.h"
 #include "simclist.h"
 #include "ircstructs.h"
 
 #define MAXMSG 512
 
-void parse_message(int clientSocket, int serverSocket);
-void parse(char *msg, int clientSocket, int serverSocket);
+void parse_message(int clientSocket);
+void parse(char *msg, int clientSocket);
 void constr_reply(char code[4], char *nick, char *param);
 
 extern list_t userlist, chanlist;
 
 //parse incoming data into messages, to deal with as needed
-void parse_message(int clientSocket, int serverSocket)
+void parse_message(int clientSocket)
 {
     char buf[MAXMSG + 1];
     char msg[MAXMSG - 1];     // max length 510 characters + \0
@@ -49,13 +50,12 @@ void parse_message(int clientSocket, int serverSocket)
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) == -1) {
             perror("ERROR: recv failure");
             close(clientSocket);
-            close(serverSocket);
-            exit(-1);
+            pthread_exit(NULL);
         }
         if(nbytes == 0){
             printf("Connection closed by client\n");
             close(clientSocket);
-            break;
+            pthread_exit(NULL);
         }
         buf[nbytes] = '\0';
         if(CRLFsplit){      // procedure to deal with \r\n split across messages
@@ -64,7 +64,7 @@ void parse_message(int clientSocket, int serverSocket)
                 msgstart = buf + 1;
                 if (msglength > 0) {
                     msg[msglength - 2] = '\0';
-                    parse(msg, clientSocket, serverSocket);
+                    parse(msg, clientSocket);
                     memset(msg, '\0', MAXMSG - 1);
                     msglength = 0;
                 }
@@ -87,7 +87,7 @@ void parse_message(int clientSocket, int serverSocket)
                 *msgend = '\0';                      //terminate message at CRLF
             strcat(msg, msgstart);
             msgstart = msgend + 2;
-            parse(msg, clientSocket, serverSocket);
+            parse(msg, clientSocket);
             memset(msg, '\0', MAXMSG - 1);
             msglength = 0;
             if(msgstart == NULL)
@@ -107,7 +107,7 @@ void parse_message(int clientSocket, int serverSocket)
         else {
             msgstart[remaind] = '\0';
             strcat(msg, msgstart);
-            parse(msg, clientSocket, serverSocket);
+            parse(msg, clientSocket);
             memset(msg, '\0', MAXMSG - 1);
             msglength = 0;
             truncated = 1;
@@ -115,7 +115,7 @@ void parse_message(int clientSocket, int serverSocket)
     }
 }
 
-void parse(char *msg, int clientSocket, int serverSocket) {
+void parse(char *msg, int clientSocket) {
     char params[16][511]; // param[0] is command
     int counter = 0;
     int paramcounter = 0;
@@ -155,9 +155,8 @@ void parse(char *msg, int clientSocket, int serverSocket) {
                 if(send(clientSocket, reply, strlen(reply), 0) == -1)
                 {
                     perror("Socket send() failed");
-                    close(serverSocket);
                     close(clientSocket);
-                    exit(-1);
+                    pthread_exit(NULL);
                 }
             }
         }
@@ -174,9 +173,8 @@ void parse(char *msg, int clientSocket, int serverSocket) {
                 if(send(clientSocket, reply, strlen(reply), 0) == -1)
                 {
                     perror("Socket send() failed");
-                    close(serverSocket);
                     close(clientSocket);
-                    exit(-1);
+                    pthread_exit(NULL);
                 }
             }   
         }
