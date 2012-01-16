@@ -237,23 +237,6 @@ void *service_single_client(void *args) {
 	
 	parse_message(socket);
 	
-	/*
-	while(1)
-	{
-		nbytes = recv(socket, buffer, sizeof(buffer), 0);
-		if (nbytes == 0)
-			break;
-		else if (nbytes == -1)
-		{
-			perror("Socket recv() failed");
-			close(socket);
-			pthread_exit(NULL);
-		}
-		   Ignore anything that's actually recv'd. We just want
-		   to keep the connection open until the client disconnects
-	}
-	*/
-	
 	close(socket);
 	pthread_exit(NULL);
 }
