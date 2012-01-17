@@ -116,7 +116,7 @@ void parse_message(int clientSocket)
 }
 
 void parse(char *msg, int clientSocket) {
-    char params[16][511]; // param[0] is command
+    chirc_message params; // params[0] is command
     int counter = 0;
     int paramcounter = 0;
     int paramnum = 0;
@@ -190,14 +190,13 @@ void parse(char *msg, int clientSocket) {
     }
 }
 
-void constr_reply(char code[4], char *nick, char *reply){   // maybe this should take a person as an argument?
-    person *clientpt = (person *)list_get_at(&userlist, 0); // rather than use 0, might use pthread id for future indexing
+void constr_reply(char code[4], person *client, char *reply){ 
     int replcode = atoi(code);
     char replmsg[MAXMSG];
     //char prefix[MAXMSG];
     char preset[MAXMSG];
-    char *user = clientpt->user;
-    char *msg_clnt = clientpt->address;
+    char *user = client->user;
+    char *msg_clnt = client->address;
     //prefix[0] = ':';
     //strcpy(prefix + 1, servername);
     char *prefix = ":foo.example.com"; // yes, this is hand-wavey. we will get server name later

@@ -37,15 +37,19 @@ void *service_single_client(void *args);
 int fun_seek(const void *el, const void *indicator);
 
 list_t userlist, chanlist;
+chirc_server *ourserver;
 
 int main(int argc, char *argv[])
 {
 	list_init(& userlist);
 	list_init(& chanlist);
+    ourserver = malloc(sizeof(chirc_server));
+    ourserver->userlist = &userlist;
+    ourserver->chanlist = &chanlist;
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;
-    struct serverArgs *sa;
+    //struct serverArgs *sa;
 
 	if(list_attributes_seeker(&userlist, fun_seek) == -1){
 		perror("list fail");
@@ -65,6 +69,8 @@ int main(int argc, char *argv[])
 				printf("ERROR: Unknown option -%c\n", opt);
 				exit(-1);
 		}
+    
+    ourserver->port = port;
 
 	if (!passwd)
 	{
@@ -72,6 +78,8 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 	
+    ourserver->pw = passwd;
+    
 	pthread_t server_thread;
 
 	sigset_t new;
@@ -86,12 +94,12 @@ int main(int argc, char *argv[])
 	#ifdef MUTEX
 	pthread_mutex_init(&lock, NULL);
 	#endif
-
+    /*
 	sa = malloc(sizeof(struct serverArgs));
 	sa->port = port;
 	sa->passwd = passwd;
-	
-	if (pthread_create(&server_thread, NULL, accept_clients, sa) < 0)
+	*/
+	if (pthread_create(&server_thread, NULL, accept_clients, NULL/*, sa*/) < 0)
 	{
 		perror("Could not create server thread");
 		exit(-1);
@@ -108,13 +116,16 @@ int main(int argc, char *argv[])
 
 void *accept_clients(void *args)
 {
-	struct serverArgs *sa;
-	char *port, *passwd;
+	/*
+    struct serverArgs *sa;
+	char *port, *passwd, *servname;
 	
 	sa = (struct serverArgs*) args;
 	port = sa->port;
 	passwd = sa->passwd;
-	
+	*/
+    char *servname;
+    char *port = ourserver->port;
 	int serverSocket;
 	int clientSocket;
 	pthread_t worker_thread;
@@ -130,7 +141,7 @@ void *accept_clients(void *args)
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE;
+	hints.ai_flags = AI_PASSIVE|AI_CANONNAME;
 
 	if (getaddrinfo(NULL, port, &hints, &res) != 0)
 	{
@@ -146,6 +157,10 @@ void *accept_clients(void *args)
 			continue;
 		}
 
+        servname = res->ai_canonname;
+        ourserver->servername = malloc(strlen(servname));
+        strcpy(ourserver->servername, servname);
+        
 		if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
 		{
 			perror("Socket setsockopt() failed");
@@ -169,7 +184,9 @@ void *accept_clients(void *args)
 
 		break;
 	}
+    
 
+    
 	freeaddrinfo(res);
 
 	if (p == NULL)
