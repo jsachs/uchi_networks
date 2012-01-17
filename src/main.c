@@ -4,7 +4,7 @@
  *
  *  main() code for chirc project
  *
- * sachs_sandler
+ *  sachs_sandler
  *
  */
 #include <stdio.h>
@@ -30,17 +30,6 @@
 #ifdef MUTEX
 pthread_mutex_t lock;
 #endif
-
-struct serverArgs
-{
-	char *port;
-	char *passwd;
-};
-
-struct workerArgs
-{
-	int socket;
-};
 
 void parse_message(int clientSocket);
 void *accept_clients(void *args);
