@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;
-    //struct serverArgs *sa;
+    struct serverArgs *sa;
     
 	if(list_attributes_seeker(&userlist, fun_seek) == -1){
 		perror("list fail");
@@ -91,15 +91,14 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
     
-#ifdef MUTEX
+    #ifdef MUTEX
 	pthread_mutex_init(&lock, NULL);
-#endif
-    /*
-     sa = malloc(sizeof(struct serverArgs));
-     sa->port = port;
-     sa->passwd = passwd;
-     */
-	if (pthread_create(&server_thread, NULL, accept_clients, NULL/*, sa*/) < 0)
+	#endif
+    
+    sa = malloc(sizeof(struct serverArgs));
+    sa->server = ourserver;
+    
+	if (pthread_create(&server_thread, NULL, accept_clients, sa) < 0)
 	{
 		perror("Could not create server thread");
 		exit(-1);
@@ -107,23 +106,26 @@ int main(int argc, char *argv[])
     
 	pthread_join(server_thread, NULL);
     
-#ifdef MUTEX
+	#ifdef MUTEX
 	pthread_mutex_destroy(&lock);
-#endif
+	#endif
     
 	pthread_exit(NULL);
 }
 
 void *accept_clients(void *args)
 {
-	/*
-     struct serverArgs *sa;
-     char *port, *passwd, *servname;
+	#ifdef MUTEX
+	pthread_mutex_t s_lock;
+	pthread_mutex_init(&s_lock)
+	#endif
+	
+    struct serverArgs *sa;
+    chirc_server *ourserver;
      
-     sa = (struct serverArgs*) args;
-     port = sa->port;
-     passwd = sa->passwd;
-     */
+    sa = (struct serverArgs*) args;
+    ourserver = sa->server;
+
     char *servname;
     char *port = ourserver->port;
 	int serverSocket;
@@ -216,6 +218,7 @@ void *accept_clients(void *args)
     	list_append(&userlist, &client);
         
 		wa = malloc(sizeof(struct workerArgs));
+		wa->server = ourserver;
 		wa->socket = clientSocket;
         
 		if (pthread_create(&worker_thread, NULL, service_single_client, wa) != 0) 
@@ -231,58 +234,4 @@ void *accept_clients(void *args)
 	pthread_exit(NULL);
 }
 
-void *service_single_client(void *args) {
-	struct workerArgs *wa;
-	int socket, nbytes, i;
-	char buffer[100];
-    
-	wa = (struct workerArgs*) args;
-	socket = wa->socket;
-    
-	pthread_detach(pthread_self());
-	
-	parse_message(socket);
-	
-	close(socket);
-	pthread_exit(NULL);
-}
 
-int fun_seek(const void *el, const void *indicator){
-    if (el == NULL || indicator == NULL){
-        perror("bad argument to fun_seek");
-        return 0;
-    }
-    person *client = (person *)el;
-    el_indicator *el_info;
-    el_info = (el_indicator *)indicator;
-    int field = el_info->field;
-    char *value;
-    int fd;
-    if (field == 4)
-        fd = el_info->fd;
-    else
-        value = el_info->value;
-    if (value == NULL || field < 0 || field > 4){
-        perror("bad argument to fun_seek");
-        return 0;
-    }
-    switch (field) {
-        case 0:
-            return (client->nick == value)?1:0;
-            break;
-        case 1:
-            return (client->user == value)?1:0;
-            break;
-        case 2:
-            return (client->fullname == value)?1:0;
-            break;
-        case 3:
-            return (client->address == value)?1:0;
-            break;
-        case 4:
-            return (client->fd == fd)?1:0;
-        default:
-            return 0;
-            break;
-    }
-}

@@ -35,19 +35,17 @@ typedef struct{
 	int fd;
 	char *value;
 } el_indicator;
-/*
+
  struct serverArgs
- {
- char *port;
- char *passwd;
- };
- */
-struct workerArgs
 {
-	int socket;
+	chirc_server *server;
 };
 
-
+struct workerArgs
+{
+	chirc_server *server;
+	int socket;
+};
 
 //definitions for userlist seek function
 #define NICK 		0
@@ -56,6 +54,7 @@ struct workerArgs
 #define ADDRESS		3
 #define FD			4
 
+#define MAXMSG 512
 
 
 #endif
