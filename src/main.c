@@ -31,7 +31,6 @@
 pthread_mutex_t lock;
 #endif
 
-void parse_message(int clientSocket);
 void *accept_clients(void *args);
 void *service_single_client(void *args);
 int fun_seek(const void *el, const void *indicator);
@@ -41,15 +40,13 @@ chirc_server *ourserver;
 
 int main(int argc, char *argv[])
 {
-	list_init(& userlist);
+    list_init(& userlist);
 	list_init(& chanlist);
-    ourserver = malloc(sizeof(chirc_server));
-    ourserver->userlist = &userlist;
-    ourserver->chanlist = &chanlist;
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;
     struct serverArgs *sa;
+    time_t birthday = time(NULL);
     
 	if(list_attributes_seeker(&userlist, fun_seek) == -1){
 		perror("list fail");
@@ -69,16 +66,22 @@ int main(int argc, char *argv[])
             printf("ERROR: Unknown option -%c\n", opt);
             exit(-1);
     }
-    
-    ourserver->port = port;
+
     
 	if (!passwd)
 	{
 		fprintf(stderr, "ERROR: You must specify an operator password\n");
 		exit(-1);
 	}
-	
+    
+    /*initialize chirc_server struct*/
+    ourserver = malloc(sizeof(chirc_server));
+    ourserver->userlist = &userlist;
+    ourserver->chanlist = &chanlist;
+    ourserver->port = port;
     ourserver->pw = passwd;
+    ourserver->version = "chirc-0.1";
+    ourserver->birthday = birthday;
     
 	pthread_t server_thread;
     

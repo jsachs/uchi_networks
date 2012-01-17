@@ -10,6 +10,8 @@ typedef struct {
 	char *pw; //operator password
     char *servername; //canonical name of server
     char *port; //port we're listening on
+    char *version;
+    time_t birthday;
     list_t *userlist;
     list_t *chanlist;
 } chirc_server;

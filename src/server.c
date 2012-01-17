@@ -23,6 +23,7 @@
 #include "reply.h"
 #include "simclist.h"
 #include "ircstructs.h"
+void parse_message(int clientSocket);
 
 void *service_single_client(void *args) {
 	struct workerArgs *wa;
@@ -36,7 +37,7 @@ void *service_single_client(void *args) {
     
 	pthread_detach(pthread_self());
 	
-	//parse_message(socket);
+	parse_message(socket);
 	
 	close(socket);
 	pthread_exit(NULL);

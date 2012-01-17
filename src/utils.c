@@ -24,28 +24,72 @@
 #include "simclist.h"
 #include "ircstructs.h"
 
-void constr_reply(char code[4], person *client, char *reply){ 
-    char *nick;
+void constr_reply(char code[4], person *client, char *reply/*, chirc_server *server*/){ //add an extra argument for stuff like an invalid nickname?
     int replcode = atoi(code);
     char replmsg[MAXMSG];
-    //char prefix[MAXMSG];
-    char preset[MAXMSG];
+    //char preset[MAXMSG];
+    //char *servname = server->servername;
+    //char *version = server->version;
+    char *servname = "foo.example.com";
+    char prefix[MAXMSG] = ":";
+    strcat(prefix, servname);
+    char *nick = client->nick;
     char *user = client->user;
     char *msg_clnt = client->address;
-    //prefix[0] = ':';
-    //strcpy(prefix + 1, servername);
-    char *prefix = ":foo.example.com"; // yes, this is hand-wavey. we will get server name later
+    //char *prefix = ":foo.example.com"; // yes, this is hand-wavey. we will get server name later
     switch (replcode){
         case 1:  // 001
-            strcpy(preset, ":Welcome to the Internet Relay Network");
-            sprintf(replmsg, "%s %s!%s@%s", preset, nick, user, msg_clnt);
+            sprintf(replmsg, ":Welcome to the Internet Relay Network %s!%s@%s", nick, user, msg_clnt);
             break;
+            /*
+        case 2:
+            sprintf(replmsg, ":Your host is %s running version %s", servname, server->version);
+            break;
+        case 3:
+            sprintf(replmsg, ":This server was created %s", ctime(&(server->date)));
+            break;
+        case 4:
+            sprintf(replmsg, ":%s %s ao mtov", servname, version); 
+            break;
+        case 422:
+             strcpy(replmsg, ":MOTD File is missing");
+             break;
+        case 462:
+             strcpy(replmsg, ":Unauthorized command (already registered)");
+             break;
+             */
         default:
             break;
     }
     snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, nick, replmsg);
     strcat(reply, "\r\n");
     return;
+}
+
+void do_registration(person *client, chirc_server *server){
+    int i;
+    int clientSocket = client->fd;
+    char reply[MAXMSG];
+    char *replies[9] = {RPL_WELCOME,RPL_YOURHOST, RPL_CREATED, RPL_MYINFO, RPL_LUSERCLIENT, RPL_LUSEROP, RPL_LUSERUNKNOWN, RPL_LUSERCHANNELS, RPL_LUSERME};
+    for (i = 0; i < 9; i++){
+        constr_reply(replies[i], client, reply /*, server*/);
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_exit(NULL);
+        }
+    }
+    
+    //later there will be more to MOTD stuff than this
+    constr_reply(ERR_NOMOTD, client, reply/*, server*/);
+    if(send(clientSocket, reply, strlen(reply), 0) == -1)
+    {
+        perror("Socket send() failed");
+        close(clientSocket);
+        pthread_exit(NULL);
+    }
+    
 }
 
 int fun_seek(const void *el, const void *indicator){

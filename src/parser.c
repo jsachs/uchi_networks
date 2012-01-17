@@ -26,7 +26,7 @@
 
 void parse_message(int clientSocket);
 void parse(char *msg, int clientSocket);
-void constr_reply(char code[4], char *nick, char *param);
+void constr_reply(char code[4], person *nick, char *param);
 
 extern list_t userlist, chanlist;
 
@@ -150,13 +150,13 @@ void parse(char *msg, int clientSocket) {
     if(strcmp(params[0], "NICK") == 0){
         if (clientpt->nick) {
             clientpt->nick = params[1];
-            //constr_reply(/*reply to change nicknames*/);
+            //constr_reply(/*reply to change nicknames*//*);
             //and send the reply
         }
         else{
             clientpt->nick = params[1];
             if(clientpt->user){
-                constr_reply("001", clientpt->nick, reply);
+                constr_reply("001", clientpt, reply);
                 if(send(clientSocket, reply, strlen(reply), 0) == -1)
                 {
                     perror("Socket send() failed");
@@ -174,7 +174,7 @@ void parse(char *msg, int clientSocket) {
             clientpt->user     = params[1];
             clientpt->fullname = params[4];
             if(clientpt->nick){
-                constr_reply("001", clientpt->nick, reply);
+                constr_reply("001", clientpt, reply);
                 if(send(clientSocket, reply, strlen(reply), 0) == -1)
                 {
                     perror("Socket send() failed");
@@ -189,7 +189,7 @@ void parse(char *msg, int clientSocket) {
         //error message: invalid command
     }
 }
-
+/*
 void constr_reply(char code[4], person *client, char *reply){ 
     int replcode = atoi(code);
     char replmsg[MAXMSG];
@@ -197,6 +197,7 @@ void constr_reply(char code[4], person *client, char *reply){
     char preset[MAXMSG];
     char *user = client->user;
     char *msg_clnt = client->address;
+    char *nick = client->nick;
     //prefix[0] = ':';
     //strcpy(prefix + 1, servername);
     char *prefix = ":foo.example.com"; // yes, this is hand-wavey. we will get server name later
@@ -212,7 +213,7 @@ void constr_reply(char code[4], person *client, char *reply){
     strcat(reply, "\r\n");
     return;
 }
-
+*/
 
 
 

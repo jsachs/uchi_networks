@@ -26,8 +26,6 @@
 
 #define MAXMSG 512
 
-void constr_reply(char code[4], char *nick, char *param);
-
 /*
 struct handler_entry handlers[] = {
     HANDLER_ENTRY (NICK),
@@ -37,6 +35,11 @@ struct handler_entry handlers[] = {
     NULL_ENTRY
 }
 */
+
+void constr_reply(char code[4], person *client, char *param);
+void do_registration(person *client, chirc_server *server);
+
+
 int chirc_handle_NICK(chirc_server  *server, // current server
                       person    *user,   // current user
                       chirc_message msg     // message to be sent
@@ -52,15 +55,8 @@ int chirc_handle_NICK(chirc_server  *server, // current server
     }
     else{
         user->nick = newnick;
-        if (user->user){
-            constr_reply("001", newnick, reply);
-            //send needs to be protected with mutex
-            if(send(fd, reply, strlen(reply), 0) == -1){
-                perror("Socket send() failed");
-                close(fd);
-                pthread_exit(NULL);
-            }
-        }
+        if (user->user)
+            do_registration(user, server);
     }
     return 0;
 }
@@ -74,20 +70,20 @@ int chirc_handle_USER(chirc_server  *server, // current server
     int fd = user->fd;
     char *username = msg[1];
     char *fullname = msg[4];
-    if (user->user && user->nick)
-        ;//error message: already registered
+    if (user->user && user->nick){
+        constr_reply(ERR_ALREADYREGISTRED, user, reply);
+        if(send(fd, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(fd);
+            pthread_exit(NULL);
+        }
+    }
     else{
         user->user = username;
         user->fullname = fullname;
-        if(user->nick){
-            constr_reply("001", user->nick, reply);
-            //send needs to be protected with mutex
-            if(send(fd, reply, strlen(reply), 0) == -1){
-                perror("Socket send() failed");
-                close(fd);
-                pthread_exit(NULL);
-            }
-        }
+        if(user->nick)
+            do_registration(user, server);
     }
     return 0;
 }
