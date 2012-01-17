@@ -1,25 +1,24 @@
 //
-//  structs.h
+//  ircstructs.h
 //  
-//
-//  Created by Nora on 1/9/12.
-//  Copyright 2012 __MyCompanyName__. All rights reserved.
 //
 
 #ifndef _structs_h
 #define _structs_h
 
 typedef struct {
-	
+	char *pw; //operator password
+    char *servername; //canonical name of server
+    char *port; //port we're listening on
+    list_t *userlist;
+    list_t *chanlist;
 } chirc_server;
 
 typedef struct {
 	list_t userlist;
 } chirc_user;
 
-typedef struct {
-	char *msg;
-} chirc_message;
+typedef char chirc_message[16][511];
 
 //element of userlist
 typedef struct {
@@ -36,13 +35,13 @@ typedef struct{
 	int fd;
 	char *value;
 } el_indicator;
-
-struct serverArgs
-{
-	char *port;
-	char *passwd;
-};
-
+/*
+ struct serverArgs
+ {
+ char *port;
+ char *passwd;
+ };
+ */
 struct workerArgs
 {
 	int socket;
