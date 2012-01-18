@@ -43,10 +43,10 @@ void constr_reply(char code[4], person *client, char *reply/*, chirc_server *ser
             break;
             /*
         case 2:
-            sprintf(replmsg, ":Your host is %s running version %s", servname, server->version);
+            sprintf(replmsg, ":Your host is %s running version %s", servname, version);
             break;
         case 3:
-            sprintf(replmsg, ":This server was created %s", ctime(&(server->date)));
+            sprintf(replmsg, ":This server was created %s", server->birthday);
             break;
         case 4:
             sprintf(replmsg, ":%s %s ao mtov", servname, version); 

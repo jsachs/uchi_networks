@@ -26,14 +26,21 @@
 void parse_message(int clientSocket);
 
 void *service_single_client(void *args) {
-	struct workerArgs *wa;
+	workerArgs *wa;
 	int socket, nbytes, i;
 	chirc_server *ourserver;
 	char buffer[100];
+    char *clientname;
+    person client = {-1, NULL, NULL, NULL, NULL};
     
-	wa = (struct workerArgs*) args;
+	wa = (workerArgs*) args;
 	socket = wa->socket;
 	ourserver = wa->server;
+    clientname = wa->clientname;
+    client.fd = socket;
+    client.address = clientname;
+    list_append(ourserver->userlist, &client);
+
     
 	pthread_detach(pthread_self());
 	

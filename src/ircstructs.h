@@ -3,15 +3,22 @@
 //  
 //
 
-#ifndef _structs_h
-#define _structs_h
+//definitions for userlist seek function
+#define NICK 		0
+#define USER 		1
+#define FULLNAME 	2
+#define ADDRESS		3
+#define FD			4
+
+#define MAXMSG 512
+#define MAXPARAMS 16
 
 typedef struct {
 	char *pw; //operator password
     char *servername; //canonical name of server
     char *port; //port we're listening on
     char *version;
-    time_t birthday;
+    char *birthday;
     list_t *userlist;
     list_t *chanlist;
 } chirc_server;
@@ -20,7 +27,7 @@ typedef struct {
 	list_t userlist;
 } chirc_user;
 
-typedef char chirc_message[16][511];
+typedef char chirc_message[MAXPARAMS][MAXMSG-1];
 
 //element of userlist
 typedef struct {
@@ -38,25 +45,17 @@ typedef struct{
 	char *value;
 } el_indicator;
 
- struct serverArgs
+typedef struct
 {
 	chirc_server *server;
-};
+} serverArgs;
 
-struct workerArgs
+typedef struct
 {
 	chirc_server *server;
+    char *clientname;
 	int socket;
-};
-
-//definitions for userlist seek function
-#define NICK 		0
-#define USER 		1
-#define FULLNAME 	2
-#define ADDRESS		3
-#define FD			4
-
-#define MAXMSG 512
+} workerArgs;
 
 
-#endif
+

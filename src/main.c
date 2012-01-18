@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;
-    struct serverArgs *sa;
+    serverArgs *sa;
     time_t birthday = time(NULL);
     
 	if(list_attributes_seeker(&userlist, fun_seek) == -1){
@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
     ourserver->port = port;
     ourserver->pw = passwd;
     ourserver->version = "chirc-0.1";
-    ourserver->birthday = birthday;
+    ourserver->birthday = ctime(&birthday);
     
 	pthread_t server_thread;
     
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&lock, NULL);
 	#endif
     
-    sa = malloc(sizeof(struct serverArgs));
+    sa = malloc(sizeof(serverArgs));
     sa->server = ourserver;
     
 	if (pthread_create(&server_thread, NULL, accept_clients, sa) < 0)
@@ -123,10 +123,10 @@ void *accept_clients(void *args)
 	pthread_mutex_init(&s_lock)
 	#endif
 	
-    struct serverArgs *sa;
+    serverArgs *sa;
     chirc_server *ourserver;
      
-    sa = (struct serverArgs*) args;
+    sa = (serverArgs*) args;
     ourserver = sa->server;
 
     char *servname;
@@ -137,11 +137,10 @@ void *accept_clients(void *args)
 	struct addrinfo hints, *res, *p;
 	struct sockaddr_in clientAddr;
 	socklen_t sinSize = sizeof(struct sockaddr_storage);
-	struct workerArgs *wa;
+	workerArgs *wa;
 	int yes = 1;
 	
 	char hostname[HOSTNAMELEN];
-    person client = {-1, NULL, NULL, NULL, NULL};
     
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
@@ -208,7 +207,7 @@ void *accept_clients(void *args)
 			continue;
 		}
 		
-		/* eventually all this will go in a separate function called by pthread, along with associated variables */ 
+		/* determine name of client */
     	if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0)
     	{
         	perror("getnameinfo failed");
@@ -216,12 +215,14 @@ void *accept_clients(void *args)
         	close(serverSocket);
         	pthread_exit(NULL);
     	}
-    	client.fd = clientSocket;
-    	client.address = hostname;
-    	list_append(&userlist, &client);
+    	//client.fd = clientSocket;
+    	//client.address = hostname;
+    	//list_append(&userlist, &client);
         
-		wa = malloc(sizeof(struct workerArgs));
+		wa = malloc(sizeof(workerArgs));
 		wa->server = ourserver;
+        wa->clientname = malloc(strlen(hostname) + 1);;
+        strcpy(wa->clientname, hostname);
 		wa->socket = clientSocket;
         
 		if (pthread_create(&worker_thread, NULL, service_single_client, wa) != 0) 
