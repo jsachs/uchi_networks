@@ -45,11 +45,8 @@ typedef struct{
 	char *value;
 } el_indicator;
 
-<<<<<<< HEAD
-struct serverArgs
-=======
+
 typedef struct
->>>>>>> e45d50ade95c2bd94215e6758b2c0dac97174748
 {
 	chirc_server *server;
 } serverArgs;

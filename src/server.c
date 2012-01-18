@@ -24,20 +24,16 @@
 #include "simclist.h"
 #include "ircstructs.h"
 
-<<<<<<< HEAD
+
 #define MAXMSG 512
 
 extern list_t userlist, chanlist;
 
 void *service_single_client(void *args)
 {
-	struct workerArgs *wa;
-	int socket, i;
-=======
-void *service_single_client(void *args) {
 	workerArgs *wa;
-	int socket, nbytes, i;
->>>>>>> e45d50ade95c2bd94215e6758b2c0dac97174748
+	int socket, i;
+
 	chirc_server *ourserver;
 	char buffer[100];
     char *clientname;
@@ -175,28 +171,4 @@ void parse(char *msg, int clientSocket) {
     // use this section to pass parameters to handler
     
 }
-/*
-void constr_reply(char code[4], person *client, char *reply){ 
-    int replcode = atoi(code);
-    char replmsg[MAXMSG];
-    //char prefix[MAXMSG];
-    char preset[MAXMSG];
-    char *user = client->user;
-    char *msg_clnt = client->address;
-    char *nick = client->nick;
-    //prefix[0] = ':';
-    //strcpy(prefix + 1, servername);
-    char *prefix = ":foo.example.com"; // yes, this is hand-wavey. we will get server name later
-    switch (replcode){
-        case 1:  // 001
-            strcpy(preset, ":Welcome to the Internet Relay Network");
-            sprintf(replmsg, "%s %s!%s@%s", preset, nick, user, msg_clnt);
-            break;
-        default:
-            break;
-    }
-    snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, nick, replmsg);
-    strcat(reply, "\r\n");
-    return;
-}
-*/
+
