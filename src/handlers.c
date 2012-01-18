@@ -43,30 +43,6 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
 }
 
 int chirc_handle_NICK(chirc_server  *server, // current server
-<<<<<<< HEAD
-						 person    *user,   // current user
-						 chirc_message msg     // message to be sent
-)
-{
-    char reply[MAXMSG];
-    int fd = user->fd;
-    newnick = msg[1];
-	if (user->nick){
-        user->nick = newnick;
-        constr_reply(/*whatever*/);
-    }
-    else{
-        user->nick = newnick;
-        if (user->user){
-            constr_reply("001", newnick, reply);
-            //send needs to be protected with mutex
-            if(send(fd, reply, strlen(reply), 0) == -1){
-                perror("Socket send() failed");
-                close(fd);
-                pthread_exit(NULL);
-            }
-        }
-=======
                       person    *user,       // current user
                       chirc_message msg      // message to be sent
                       )
@@ -82,37 +58,11 @@ int chirc_handle_NICK(chirc_server  *server, // current server
         strcpy(user->nick, newnick);
         if (strlen(user->user))
             do_registration(user, server);
->>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
     }
     return 0;
 }
 
 int chirc_handle_USER(chirc_server  *server, // current server
-<<<<<<< HEAD
-						 person    *user,   // current user
-						 chirc_message msg     // message to be sent
-)
-{
-	char reply[MAXMSG];
-    int fd = user->fd;
-    char *username = msg[1];
-    char *fullname = msg[4];
-    if (user->user && user->nick)
-        ;//error message: already registered
-    else{
-        user->user = username;
-        user->fullname = fullname;
-        if(user->nick){
-            constr_reply("001", user->nick, reply);
-            //send needs to be protected with mutex
-            if(send(fd, reply, strlen(reply), 0) == -1){
-                perror("Socket send() failed");
-                close(fd);
-                pthread_exit(NULL);
-            }
-        }
-    }
-=======
                       person    *user,       // current user
                       chirc_message msg      // message to be sent
                       )
@@ -138,19 +88,13 @@ int chirc_handle_USER(chirc_server  *server, // current server
         if(strlen(user->nick))
             do_registration(user, server);
     }
->>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
     return 0;
 }
 
 int chirc_handle_QUIT(chirc_server  *server, // current server
-<<<<<<< HEAD
 						 person    *user,   // current user
 						 chirc_message msg     // message to be sent
-=======
-                      person    *user,   // current user
-                      chirc_message msg     // message to be sent
                       )
->>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
 {
 	return 0;
 }

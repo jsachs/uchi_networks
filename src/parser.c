@@ -113,11 +113,8 @@ void parse_message(int clientSocket, chirc_server *server)
     }
 }
 
-<<<<<<< HEAD
-void parse(char *msg, int clientSocket) {
-=======
+
 void parse(char *msg, int clientSocket, chirc_server *server) {
->>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
     chirc_message params; // params[0] is command
     int counter = 0;
     int paramcounter = 0;
@@ -148,83 +145,7 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
         counter++;
     }
     
-    
-    
-    // Begin identifying possible commands
-    // this may become a separate function/module in the future
-    
     handle_chirc_message(server, clientpt, params);
     
-    /*
-    if(strcmp(params[0], "NICK") == 0){
-        if (clientpt->nick) {
-            strcpy(clientpt->nick, params[1]);
-            //constr_reply(/*reply to change nicknames*//*);
-            //and send the reply
-        }
-        else{
-            strcpy(clientpt->nick, params[1]);
-            if(clientpt->user){
-                constr_reply("001", clientpt, reply);
-                if(send(clientSocket, reply, strlen(reply), 0) == -1)
-                {
-                    perror("Socket send() failed");
-                    close(clientSocket);
-                    pthread_exit(NULL);
-                }
-            }
-        }
-    }
-    else if(strcmp(params[0], "USER") == 0) {
-        if (clientpt->user && clientpt->nick) {
-            ;
-        }
-        else{
-            strcpy(clientpt->user, params[1]);
-            strcpy(clientpt->fullname, params[4]);
-            if(clientpt->nick){
-                constr_reply("001", clientpt, reply);
-                if(send(clientSocket, reply, strlen(reply), 0) == -1)
-                {
-                    perror("Socket send() failed");
-                    close(clientSocket);
-                    pthread_exit(NULL);
-                }
-            }   
-        }
-    }
-    else
-    {
-        //
-    } */
 }
-
-<<<<<<< HEAD
-void constr_reply(char code[4], person *client, char *reply){ 
-    int replcode = atoi(code);
-    char replmsg[MAXMSG];
-    //char prefix[MAXMSG];
-    char preset[MAXMSG];
-    char *user = client->user;
-    char *msg_clnt = client->address;
-    //prefix[0] = ':';
-    //strcpy(prefix + 1, servername);
-    char *prefix = ":foo.example.com"; // yes, this is hand-wavey. we will get server name later
-    switch (replcode){
-        case 1:  // 001
-            strcpy(preset, ":Welcome to the Internet Relay Network");
-            sprintf(replmsg, "%s %s!%s@%s", preset, nick, user, msg_clnt);
-            break;
-        default:
-            break;
-    }
-    snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, nick, replmsg);
-    strcat(reply, "\r\n");
-    return;
-}
-
-
-
-=======
->>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
 
