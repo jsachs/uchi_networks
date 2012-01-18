@@ -68,7 +68,7 @@ void constr_reply(char code[4], person *client, char *reply/*, chirc_server *ser
 
 void do_registration(person *client, chirc_server *server){
     int i;
-    int clientSocket = client->fd;
+    int clientSocket = client->clientSocket;
     char reply[MAXMSG];
     char *replies[9] = {RPL_WELCOME,RPL_YOURHOST, RPL_CREATED, RPL_MYINFO, RPL_LUSERCLIENT, RPL_LUSEROP, RPL_LUSERUNKNOWN, RPL_LUSERCHANNELS, RPL_LUSERME};
     for (i = 0; i < 9; i++){
@@ -125,7 +125,7 @@ int fun_seek(const void *el, const void *indicator){
             return (client->address == value)?1:0;
             break;
         case 4:
-            return (client->fd == fd)?1:0;
+            return (client->clientSocket == fd)?1:0;
         default:
             return 0;
             break;
