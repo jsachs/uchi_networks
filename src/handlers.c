@@ -26,7 +26,7 @@
 
 #define MAXMSG 512
 
-void constr_reply(char code[4], person *client, char *param);
+void constr_reply(char code[4], person *client, char *reply, chirc_server *server);
 void do_registration(person *client, chirc_server *server);
 
 int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
@@ -71,17 +71,16 @@ int chirc_handle_NICK(chirc_server  *server, // current server
                       chirc_message msg      // message to be sent
                       )
 {
-    //char reply[MAXMSG];
     char *newnick;
     int clientSocket = user->clientSocket;
     newnick = msg[1];
-	if (user->nick){
+	if (strlen(user->nick)){
         strcpy(user->nick, newnick);
-        //constr_reply();
+        // deal with a change in nick
     }
     else{
         strcpy(user->nick, newnick);
-        if (user->user)
+        if (strlen(user->user))
             do_registration(user, server);
 >>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
     }
@@ -124,7 +123,7 @@ int chirc_handle_USER(chirc_server  *server, // current server
     char *fullname = msg[4];
     
     if ( strlen(user->user) && strlen(user->nick) ) {
-        constr_reply(ERR_ALREADYREGISTRED, user, reply);
+        constr_reply(ERR_ALREADYREGISTRED, user, reply, server);
         
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
@@ -136,7 +135,7 @@ int chirc_handle_USER(chirc_server  *server, // current server
     else {
         strcpy(user->user, username);
         strcpy(user->fullname, fullname);
-        if(user->nick)
+        if(strlen(user->nick))
             do_registration(user, server);
     }
 >>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc

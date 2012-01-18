@@ -110,7 +110,11 @@ int main(int argc, char *argv[])
     ourserver->pw = passwd;
     ourserver->version = "chirc-0.1";
     ourserver->birthday = ctime(&birthday);
+<<<<<<< HEAD
 >>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
+=======
+    ourserver->birthday[strlen(ourserver->birthday) - 1] = '\0';
+>>>>>>> c68f4865da866a9663d61dc4e4f9eea759a20703
     
 	pthread_t server_thread;
     
