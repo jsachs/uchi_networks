@@ -26,7 +26,7 @@
 
 #define MAXMSG 512
 
-void constr_reply(char code[4], person *client, char *reply, chirc_server *server);
+void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
 void do_registration(person *client, chirc_server *server);
 
 int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
@@ -47,17 +47,33 @@ int chirc_handle_NICK(chirc_server  *server, // current server
                       chirc_message msg      // message to be sent
                       )
 {
+    char reply[MAXMSG];
     char *newnick;
     int clientSocket = user->clientSocket;
     newnick = msg[1];
-	if (strlen(user->nick)){
-        strcpy(user->nick, newnick);
-        // deal with a change in nick
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    seek_arg->field = NICK;
+    seek_arg->value = newnick;
+    person *clientpt = (person *)list_seek(server->userlist, seek_arg);
+    if (clientpt) {
+        constr_reply(ERR_NICKNAMEINUSE, user, reply, server, newnick);
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_exit(NULL);
+        }
     }
     else{
-        strcpy(user->nick, newnick);
-        if (strlen(user->user))
-            do_registration(user, server);
+        if (strlen(user->nick)){
+            strcpy(user->nick, newnick);
+            // deal with a change in nick
+        }
+        else{
+            strcpy(user->nick, newnick);
+            if (strlen(user->user))
+                do_registration(user, server);
+        }
     }
     return 0;
 }
@@ -73,7 +89,7 @@ int chirc_handle_USER(chirc_server  *server, // current server
     char *fullname = msg[4];
     
     if ( strlen(user->user) && strlen(user->nick) ) {
-        constr_reply(ERR_ALREADYREGISTRED, user, reply, server);
+        constr_reply(ERR_ALREADYREGISTRED, user, reply, server, NULL);
         
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {

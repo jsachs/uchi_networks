@@ -24,7 +24,7 @@
 #include "simclist.h"
 #include "ircstructs.h"
 
-void constr_reply(char code[4], person *client, char *reply, chirc_server *server) {
+void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra) {
     int replcode = atoi(code);
     char replmsg[MAXMSG];
     char preset[MAXMSG];
@@ -33,6 +33,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
     char prefix[MAXMSG] = ":";
     strcat(prefix, servname);
     char *nick = client->nick;
+    if (strlen(nick) == 0) {
+        nick = "*";
+    }
     char *user = client->user;
     char *msg_clnt = client->address;
     switch (replcode){
@@ -66,6 +69,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 422:
              strcpy(replmsg, ":MOTD File is missing");
              break;
+        case 433:
+            sprintf(replmsg, "%s :Nickname is already in use", extra);
+            break;
         case 462:
              strcpy(replmsg, ":Unauthorized command (already registered)");
              break;
@@ -92,7 +98,7 @@ void do_registration(person *client, chirc_server *server){
                         RPL_LUSERCHANNELS,
                         RPL_LUSERME};
     for (i = 0; i < 9; i++){
-        constr_reply(replies[i], client, reply , server);
+        constr_reply(replies[i], client, reply , server, NULL);
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
@@ -102,7 +108,7 @@ void do_registration(person *client, chirc_server *server){
     }
     
     //later there will be more to MOTD stuff than this
-    constr_reply(ERR_NOMOTD, client, reply, server);
+    constr_reply(ERR_NOMOTD, client, reply, server, NULL);
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
         perror("Socket send() failed");
@@ -127,25 +133,40 @@ int fun_seek(const void *el, const void *indicator){
         fd = el_info->fd;
     else
         value = el_info->value;
-    if (value == NULL || field < 0 || field > 4){
+    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 4){
         perror("bad argument to fun_seek");
         return 0;
     }
     switch (field) {
         case 0:
-            return (client->nick == value)?1:0;
+            if (strcmp(client->nick, value) == 0)
+                return 1;
+            else
+                return 0;
             break;
         case 1:
-            return (client->user == value)?1:0;
+            if (strcmp(client->user, value) == 0)
+                return 1;
+            else
+                return 0;
             break;
         case 2:
-            return (client->fullname == value)?1:0;
+            if (strcmp(client->fullname, value) == 0)
+                return 1;
+            else
+                return 0;
             break;
         case 3:
-            return (client->address == value)?1:0;
+            if (strcmp(client->address, value) == 0)
+                return 1;
+            else
+                return 0;
             break;
         case 4:
-            return (client->clientSocket == fd)?1:0;
+            if (client->clientSocket == fd)
+                return 1;
+            else
+                return 0;
         default:
             return 0;
             break;
