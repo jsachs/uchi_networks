@@ -24,6 +24,7 @@
 #include "simclist.h"
 #include "ircstructs.h"
 
+<<<<<<< HEAD
 #define MAXMSG 512
 
 extern list_t userlist, chanlist;
@@ -32,12 +33,24 @@ void *service_single_client(void *args)
 {
 	struct workerArgs *wa;
 	int socket, i;
+=======
+void *service_single_client(void *args) {
+	workerArgs *wa;
+	int socket, nbytes, i;
+>>>>>>> e45d50ade95c2bd94215e6758b2c0dac97174748
 	chirc_server *ourserver;
 	char buffer[100];
+    char *clientname;
+    person client = {-1, NULL, NULL, NULL, NULL};
     
-	wa = (struct workerArgs*) args;
+	wa = (workerArgs*) args;
 	socket = wa->socket;
 	ourserver = wa->server;
+    clientname = wa->clientname;
+    client.fd = socket;
+    client.address = clientname;
+    list_append(ourserver->userlist, &client);
+
     
 	pthread_detach(pthread_self());
 	
