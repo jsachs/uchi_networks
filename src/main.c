@@ -215,9 +215,6 @@ void *accept_clients(void *args)
         	close(serverSocket);
         	pthread_exit(NULL);
     	}
-    	//client.fd = clientSocket;
-    	//client.address = hostname;
-    	//list_append(&userlist, &client);
         
 		wa = malloc(sizeof(workerArgs));
 		wa->server = ourserver;
