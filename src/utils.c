@@ -66,6 +66,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 255:
             strcpy(replmsg, ":I have 1 clients and 1 servers");
             break;
+        case 421:
+            sprintf(replmsg, "%s :Unknown command", extra);
+            break;
         case 422:
              strcpy(replmsg, ":MOTD File is missing");
              break;

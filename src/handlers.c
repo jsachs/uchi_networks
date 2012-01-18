@@ -32,6 +32,8 @@ void do_registration(person *client, chirc_server *server);
 int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_USER(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_QUIT(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_PING(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
 
 void handle_chirc_message(chirc_server *server, person *user, chirc_message params)
 {
@@ -40,6 +42,9 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
     if      (strcmp(command, "NICK") == 0) chirc_handle_NICK(server, user, params);
     else if (strcmp(command, "USER") == 0) chirc_handle_USER(server, user, params);
     else if (strcmp(command, "QUIT") == 0) chirc_handle_QUIT(server, user, params);
+    else if (strcmp(command, "PING") == 0) chirc_handle_PING(server, user, params);
+    else if (strcmp(command, "PONG") == 0) ;
+    else chirc_handle_UNKNOWN(server, user, params);
 }
 
 int chirc_handle_NICK(chirc_server  *server, // current server
@@ -113,4 +118,33 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
                       )
 {
 	return 0;
+}
+
+int chirc_handle_PING(chirc_server *server, person *user, chirc_message params){
+    char PONGback[MAXMSG];
+    int clientSocket = user->clientSocket;
+    char *servername = malloc(strlen(server->servername) + 1);
+    strcpy(servername, server->servername);
+    snprintf(PONGback, MAXMSG - 2, "PONG %s", servername);
+    strcat(PONGback, "\r\n");
+    if(send(clientSocket, PONGback, strlen(PONGback), 0) == -1)
+    {
+        perror("Socket send() failed");
+        close(clientSocket);
+        pthread_exit(NULL);
+    }
+    return 0;
+}
+
+int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params){
+    char reply[MAXMSG];
+    int clientSocket = user->clientSocket;
+    constr_reply(ERR_UNKNOWNCOMMAND, user, reply, server, params[0]);
+    if(send(clientSocket, reply, strlen(reply), 0) == -1)
+    {
+        perror("Socket send() failed");
+        close(clientSocket);
+        pthread_exit(NULL);
+    }
+    return 0;
 }
