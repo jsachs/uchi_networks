@@ -24,14 +24,12 @@
 
 #define MAXMSG 512
 
-void parse_message(int clientSocket);
-void parse(char *msg, int clientSocket);
-void constr_reply(char code[4], char *nick, char *param);
-
-extern list_t userlist, chanlist;
+void parse(char *msg, int clientSocket, chirc_server *server);
+void constr_reply(char code[4], person *nick, char *param);
+void handle_chirc_message(chirc_server *server, person *user, chirc_message params);
 
 //parse incoming data into messages, to deal with as needed
-void parse_message(int clientSocket)
+void parse_message(int clientSocket, chirc_server *server)
 {
     char buf[MAXMSG + 1];
     char msg[MAXMSG - 1];     // max length 510 characters + \0
@@ -64,7 +62,7 @@ void parse_message(int clientSocket)
                 msgstart = buf + 1;
                 if (msglength > 0) {
                     msg[msglength - 2] = '\0';
-                    parse(msg, clientSocket);
+                    parse(msg, clientSocket, server);
                     memset(msg, '\0', MAXMSG - 1);
                     msglength = 0;
                 }
@@ -87,7 +85,7 @@ void parse_message(int clientSocket)
                 *msgend = '\0';                      //terminate message at CRLF
             strcat(msg, msgstart);
             msgstart = msgend + 2;
-            parse(msg, clientSocket);
+            parse(msg, clientSocket, server);
             memset(msg, '\0', MAXMSG - 1);
             msglength = 0;
             if(msgstart == NULL)
@@ -107,7 +105,7 @@ void parse_message(int clientSocket)
         else {
             msgstart[remaind] = '\0';
             strcat(msg, msgstart);
-            parse(msg, clientSocket);
+            parse(msg, clientSocket, server);
             memset(msg, '\0', MAXMSG - 1);
             msglength = 0;
             truncated = 1;
@@ -115,7 +113,11 @@ void parse_message(int clientSocket)
     }
 }
 
+<<<<<<< HEAD
 void parse(char *msg, int clientSocket) {
+=======
+void parse(char *msg, int clientSocket, chirc_server *server) {
+>>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
     chirc_message params; // params[0] is command
     int counter = 0;
     int paramcounter = 0;
@@ -126,7 +128,7 @@ void parse(char *msg, int clientSocket) {
     //may want to modify this to get by pthread id, not fd
     seek_arg->field = FD;
     seek_arg->fd = clientSocket;
-    person *clientpt = (person *)list_seek(&userlist, seek_arg);
+    person *clientpt = (person *)list_seek(server->userlist, seek_arg);
     // process to break a message into its component commands/parameters
     // potentially clean this up to ultilize strtok() at some point
     while(msg[counter] != '\0'){
@@ -145,18 +147,25 @@ void parse(char *msg, int clientSocket) {
         }
         counter++;
     }
+    
+    
+    
     // Begin identifying possible commands
     // this may become a separate function/module in the future
+    
+    handle_chirc_message(server, clientpt, params);
+    
+    /*
     if(strcmp(params[0], "NICK") == 0){
         if (clientpt->nick) {
-            clientpt->nick = params[1];
-            //constr_reply(/*reply to change nicknames*/);
+            strcpy(clientpt->nick, params[1]);
+            //constr_reply(/*reply to change nicknames*//*);
             //and send the reply
         }
         else{
-            clientpt->nick = params[1];
+            strcpy(clientpt->nick, params[1]);
             if(clientpt->user){
-                constr_reply("001", clientpt->nick, reply);
+                constr_reply("001", clientpt, reply);
                 if(send(clientSocket, reply, strlen(reply), 0) == -1)
                 {
                     perror("Socket send() failed");
@@ -166,15 +175,15 @@ void parse(char *msg, int clientSocket) {
             }
         }
     }
-    else if(strcmp(params[0], "USER") == 0){
+    else if(strcmp(params[0], "USER") == 0) {
         if (clientpt->user && clientpt->nick) {
-            //error message: already registered
+            ;
         }
         else{
-            clientpt->user     = params[1];
-            clientpt->fullname = params[4];
+            strcpy(clientpt->user, params[1]);
+            strcpy(clientpt->fullname, params[4]);
             if(clientpt->nick){
-                constr_reply("001", clientpt->nick, reply);
+                constr_reply("001", clientpt, reply);
                 if(send(clientSocket, reply, strlen(reply), 0) == -1)
                 {
                     perror("Socket send() failed");
@@ -186,10 +195,11 @@ void parse(char *msg, int clientSocket) {
     }
     else
     {
-        //error message: invalid command
-    }
+        //
+    } */
 }
 
+<<<<<<< HEAD
 void constr_reply(char code[4], person *client, char *reply){ 
     int replcode = atoi(code);
     char replmsg[MAXMSG];
@@ -215,4 +225,6 @@ void constr_reply(char code[4], person *client, char *reply){
 
 
 
+=======
+>>>>>>> b48a25489f858a23ceb793a1adeb7e0651365fbc
 
