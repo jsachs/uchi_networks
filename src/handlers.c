@@ -26,6 +26,8 @@
 
 #define MAXMSG 512
 
+//#define HANDLER_ENTRY(command) handlers[command]
+
 /*
 struct handler_entry handlers[] = {
     HANDLER_ENTRY (NICK),
@@ -41,17 +43,17 @@ void do_registration(person *client, chirc_server *server);
 
 
 int chirc_handle_NICK(chirc_server  *server, // current server
-                      person    *user,   // current user
-                      chirc_message msg     // message to be sent
+                      person    *user,       // current user
+                      chirc_message msg      // message to be sent
                       )
 {
-    char reply[MAXMSG];
+    //char reply[MAXMSG];
     char *newnick;
-    int fd = user->fd;
+    int clientSocket = user->clientSocket;
     newnick = msg[1];
 	if (user->nick){
         user->nick = newnick;
-        // constr_reply(/*whatever*/);
+        //constr_reply();
     }
     else{
         user->nick = newnick;
@@ -62,20 +64,20 @@ int chirc_handle_NICK(chirc_server  *server, // current server
 }
 
 int chirc_handle_USER(chirc_server  *server, // current server
-                      person    *user,   // current user
-                      chirc_message msg     // message to be sent
+                      person    *user,       // current user
+                      chirc_message msg      // message to be sent
                       )
 {
 	char reply[MAXMSG];
-    int fd = user->fd;
+    int clientSocket = user->clientSocket;
     char *username = msg[1];
     char *fullname = msg[4];
     if (user->user && user->nick){
         constr_reply(ERR_ALREADYREGISTRED, user, reply);
-        if(send(fd, reply, strlen(reply), 0) == -1)
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
-            close(fd);
+            close(clientSocket);
             pthread_exit(NULL);
         }
     }
@@ -93,5 +95,5 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
                       chirc_message msg     // message to be sent
                       )
 {
-	/* some code I guess... */
+	return 0;
 }

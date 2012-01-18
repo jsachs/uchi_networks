@@ -24,7 +24,7 @@ typedef char chirc_message[16][511];
 
 //element of userlist
 typedef struct {
-	int   fd;
+	int   clientSocket;
 	char* nick;
 	char* user;
 	char* fullname;
@@ -38,7 +38,7 @@ typedef struct{
 	char *value;
 } el_indicator;
 
- struct serverArgs
+struct serverArgs
 {
 	chirc_server *server;
 };

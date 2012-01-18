@@ -117,12 +117,7 @@ int main(int argc, char *argv[])
 }
 
 void *accept_clients(void *args)
-{
-	#ifdef MUTEX
-	pthread_mutex_t s_lock;
-	pthread_mutex_init(&s_lock)
-	#endif
-	
+{	
     struct serverArgs *sa;
     chirc_server *ourserver;
      
@@ -216,7 +211,7 @@ void *accept_clients(void *args)
         	close(serverSocket);
         	pthread_exit(NULL);
     	}
-    	client.fd = clientSocket;
+    	client.clientSocket = clientSocket;
     	client.address = hostname;
     	list_append(&userlist, &client);
         
