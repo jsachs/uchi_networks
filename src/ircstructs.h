@@ -32,9 +32,9 @@ typedef char chirc_message[MAXPARAMS][MAXMSG-1];
 //element of userlist
 typedef struct {
 	int   clientSocket;
-	char* nick;
-	char* user;
-	char* fullname;
+	char  nick[MAXMSG];
+	char  user[MAXMSG];
+	char  fullname[MAXMSG];
 	char* address;
 } person;
 

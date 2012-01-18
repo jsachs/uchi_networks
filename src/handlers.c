@@ -26,21 +26,21 @@
 
 #define MAXMSG 512
 
-//#define HANDLER_ENTRY(command) handlers[command]
-
-/*
-struct handler_entry handlers[] = {
-    HANDLER_ENTRY (NICK),
-    HANDLER_ENTRY (USER),
-    HANDLER_ENTRY (QUIT),
-    
-    NULL_ENTRY
-}
-*/
-
 void constr_reply(char code[4], person *client, char *param);
 void do_registration(person *client, chirc_server *server);
 
+int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_USER(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_QUIT(chirc_server *server, person *user, chirc_message params);
+
+void handle_chirc_message(chirc_server *server, person *user, chirc_message params)
+{
+    char *command = params[0];
+    
+    if      (strcmp(command, "NICK") == 0) chirc_handle_NICK(server, user, params);
+    else if (strcmp(command, "USER") == 0) chirc_handle_USER(server, user, params);
+    else if (strcmp(command, "QUIT") == 0) chirc_handle_QUIT(server, user, params);
+}
 
 int chirc_handle_NICK(chirc_server  *server, // current server
                       person    *user,       // current user
@@ -52,11 +52,11 @@ int chirc_handle_NICK(chirc_server  *server, // current server
     int clientSocket = user->clientSocket;
     newnick = msg[1];
 	if (user->nick){
-        user->nick = newnick;
+        strcpy(user->nick, newnick);
         //constr_reply();
     }
     else{
-        user->nick = newnick;
+        strcpy(user->nick, newnick);
         if (user->user)
             do_registration(user, server);
     }
@@ -68,12 +68,14 @@ int chirc_handle_USER(chirc_server  *server, // current server
                       chirc_message msg      // message to be sent
                       )
 {
-	char reply[MAXMSG];
+    char reply[MAXMSG];
     int clientSocket = user->clientSocket;
     char *username = msg[1];
     char *fullname = msg[4];
-    if (user->user && user->nick){
+    
+    if ( strlen(user->user) && strlen(user->nick) ) {
         constr_reply(ERR_ALREADYREGISTRED, user, reply);
+        
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
@@ -81,9 +83,9 @@ int chirc_handle_USER(chirc_server  *server, // current server
             pthread_exit(NULL);
         }
     }
-    else{
-        user->user = username;
-        user->fullname = fullname;
+    else {
+        strcpy(user->user, username);
+        strcpy(user->fullname, fullname);
         if(user->nick)
             do_registration(user, server);
     }

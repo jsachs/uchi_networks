@@ -27,7 +27,7 @@
 
 #define MAXMSG 512
 
-void parse_message(int clientSocket);
+void parse_message(int clientSocket, chirc_server *server);
 
 void *service_single_client(void *args) {
 	workerArgs *wa;
@@ -35,7 +35,11 @@ void *service_single_client(void *args) {
 	chirc_server *ourserver;
 	char buffer[100];
     char *clientname;
-    person client = {-1, NULL, NULL, NULL, NULL};
+    person client;
+    client.nick[0] = '\0';
+    client.user[0] = '\0';
+    client.fullname[0] = '\0';
+    
     
 	wa = (workerArgs*) args;
 	socket = wa->socket;
@@ -48,7 +52,7 @@ void *service_single_client(void *args) {
     
 	pthread_detach(pthread_self());
 
-	parse_message(socket);
+	parse_message(socket, ourserver);
 
 	close(socket);
 	pthread_exit(NULL);
