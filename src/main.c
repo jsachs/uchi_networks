@@ -82,6 +82,7 @@ int main(int argc, char *argv[])
     ourserver->pw = passwd;
     ourserver->version = "chirc-0.1";
     ourserver->birthday = ctime(&birthday);
+    ourserver->birthday[strlen(ourserver->birthday) - 1] = '\0';
     
 	pthread_t server_thread;
     
