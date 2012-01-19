@@ -144,35 +144,67 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
     person *recippt = (person *)list_seek(server->userlist, seek_arg);
     if (!recippt) {
         constr_reply(ERR_NOSUCHNICK, user, reply, server, target_nick);
+        
         if(send(senderSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
             close(senderSocket);
             pthread_exit(NULL);
         }
+        
     }
-    
-    
-    snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", recippt->nick,
-                                                         recippt->user,
-                                                         recippt->address,
-                                                         params[0],
-                                                         params[1],
-                                                         params[2]
-    );
-    strcat(priv_msg, "\r\n");
-    if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
+    else
     {
-        perror("Socket send() failed");
-        close(recippt->clientSocket);
-        pthread_exit(NULL);
-    }
-
+       snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
+                                                            user->user,
+                                                            user->address,
+                                                            params[0],
+                                                            params[1],
+                                                            params[2]
+        );
+        strcat(priv_msg, "\r\n");
+    
+    
+        if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(recippt->clientSocket);
+            pthread_exit(NULL);
+        }
+    } 
     return 0;
 }
 
 int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params)
 {
+    char notice[MAXMSG];
+    int senderSocket = user->clientSocket;
+    char *target_nick = params[1];
+    
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    seek_arg->field = NICK;
+    seek_arg->value = target_nick;
+    person *recippt = (person *)list_seek(server->userlist, seek_arg);
+    if (recippt)
+    {
+        snprintf(notice, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
+                                                           user->user,
+                                                           user->address,
+                                                           params[0],
+                                                           params[1],
+                                                           params[2]
+        );
+        strcat(notice, "\r\n");
+    
+    
+        if(send(recippt->clientSocket, notice, strlen(notice), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(recippt->clientSocket);
+            pthread_exit(NULL);
+        }
+    }
+
     return 0;
 }
 
