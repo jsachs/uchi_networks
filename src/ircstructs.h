@@ -36,6 +36,7 @@ typedef struct {
 	char  user[MAXMSG];
 	char  fullname[MAXMSG];
 	char* address;
+	pthread_mutex_t c_lock;
 } person;
 
 //parameter for seeker function

@@ -62,12 +62,15 @@ int chirc_handle_NICK(chirc_server  *server, // current server
     person *clientpt = (person *)list_seek(server->userlist, seek_arg);
     if (clientpt) {
         constr_reply(ERR_NICKNAMEINUSE, user, reply, server, newnick);
+        
+        pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
             close(clientSocket);
             pthread_exit(NULL);
         }
+        pthread_mutex_unlock(&(user->c_lock));
     }
     else{
         if (strlen(user->nick)){
@@ -96,12 +99,14 @@ int chirc_handle_USER(chirc_server  *server, // current server
     if ( strlen(user->user) && strlen(user->nick) ) {
         constr_reply(ERR_ALREADYREGISTRED, user, reply, server, NULL);
         
+        pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
             close(clientSocket);
             pthread_exit(NULL);
         }
+        pthread_mutex_unlock(&(user->c_lock));
     }
     else {
         strcpy(user->user, username);
@@ -127,12 +132,16 @@ int chirc_handle_PING(chirc_server *server, person *user, chirc_message params){
     strcpy(servername, server->servername);
     snprintf(PONGback, MAXMSG - 2, "PONG %s", servername);
     strcat(PONGback, "\r\n");
+    
+    pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, PONGback, strlen(PONGback), 0) == -1)
     {
         perror("Socket send() failed");
         close(clientSocket);
         pthread_exit(NULL);
     }
+    pthread_mutex_unlock(&(user->c_lock));
+    
     return 0;
 }
 
@@ -140,11 +149,15 @@ int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message param
     char reply[MAXMSG];
     int clientSocket = user->clientSocket;
     constr_reply(ERR_UNKNOWNCOMMAND, user, reply, server, params[0]);
+    
+    pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
         perror("Socket send() failed");
         close(clientSocket);
         pthread_exit(NULL);
     }
+    pthread_mutex_unlock(&(user->c_lock));
+    
     return 0;
 }

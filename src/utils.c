@@ -102,22 +102,28 @@ void do_registration(person *client, chirc_server *server){
                         RPL_LUSERME};
     for (i = 0; i < 9; i++){
         constr_reply(replies[i], client, reply , server, NULL);
+        
+        pthread_mutex_lock(&(client->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
             close(clientSocket);
             pthread_exit(NULL);
         }
+        pthread_mutex_unlock(&(client->c_lock));
     }
     
     //later there will be more to MOTD stuff than this
     constr_reply(ERR_NOMOTD, client, reply, server, NULL);
+    
+    pthread_mutex_lock(&(client->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
         perror("Socket send() failed");
         close(clientSocket);
         pthread_exit(NULL);
     }
+    pthread_mutex_unlock(&(client->c_lock));
     
 }
 
