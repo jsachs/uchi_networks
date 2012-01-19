@@ -129,7 +129,7 @@ void *accept_clients(void *args)
     sa = (serverArgs*) args;
     ourserver = sa->server;
 
-    char *servname;
+    char servname[MAXMSG];
     char *port = ourserver->port;
 	int serverSocket;
 	int clientSocket;
@@ -145,7 +145,7 @@ void *accept_clients(void *args)
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE|AI_CANONNAME;
+	hints.ai_flags = AI_PASSIVE/*|AI_CANONNAME*/;
 
 	if (getaddrinfo(NULL, port, &hints, &res) != 0)
 	{
@@ -153,7 +153,8 @@ void *accept_clients(void *args)
 		pthread_exit(NULL);
 	}
     
-    servname = res->ai_canonname;
+    //servname = res->ai_canonname;
+    gethostname(servname, MAXMSG);
     ourserver->servername = malloc(strlen(servname));
     strcpy(ourserver->servername, servname);
     
