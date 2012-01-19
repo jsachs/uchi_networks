@@ -32,6 +32,8 @@ void do_registration(person *client, chirc_server *server);
 int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_USER(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_QUIT(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_PING(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
 
@@ -123,6 +125,16 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
                       )
 {
 	return 0;
+}
+
+int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message params)
+{
+    return 0;
+}
+
+int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params)
+{
+    return 0;
 }
 
 int chirc_handle_PING(chirc_server *server, person *user, chirc_message params){
