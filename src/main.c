@@ -208,6 +208,7 @@ void *accept_clients(void *args)
 		}
 		
 		/* determine name of client */
+    	/*
     	if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0)
     	{
         	perror("getnameinfo failed");
@@ -215,11 +216,12 @@ void *accept_clients(void *args)
         	close(serverSocket);
         	pthread_exit(NULL);
     	}
-        
+		*/  // CHANGE THIS BACK!!!!!!
+				
 		wa = malloc(sizeof(workerArgs));
 		wa->server = ourserver;
         wa->clientname = malloc(strlen(hostname) + 1);;
-        strcpy(wa->clientname, hostname);
+        strcpy(wa->clientname, "localhost"); //REMEMBER TO CHANGE THIS BACK!!!!!!!!
 		wa->socket = clientSocket;
         
 		if (pthread_create(&worker_thread, NULL, service_single_client, wa) != 0) 
