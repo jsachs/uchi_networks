@@ -45,11 +45,21 @@ void parse_message(int clientSocket, chirc_server *server)
     
 	while (1) {
         msgstart = buf;
+        
+        el_indicator *seek_arg = malloc(sizeof(el_indicator));
+        
+        seek_arg->field = FD;
+        seek_arg->fd = clientSocket;
+        person *clientpt = (person *)list_seek(server->userlist, seek_arg);
+          
+        pthread_mutex_lock(&(clientpt->c_lock));
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) == -1) {
             perror("ERROR: recv failure");
             close(clientSocket);
             pthread_exit(NULL);
         }
+        pthread_mutex_unlock(&(clientpt->c_lock));
+        
         if(nbytes == 0){
             printf("Connection closed by client\n");
             close(clientSocket);

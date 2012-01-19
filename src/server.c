@@ -30,6 +30,7 @@
 void parse_message(int clientSocket, chirc_server *server);
 
 void *service_single_client(void *args) {
+	
 	workerArgs *wa;
 	int socket, nbytes, i;
 	chirc_server *ourserver;
@@ -39,6 +40,7 @@ void *service_single_client(void *args) {
     client.nick[0] = '\0';
     client.user[0] = '\0';
     client.fullname[0] = '\0';
+    pthread_mutex_init(&(client.c_lock), NULL);
     
     
 	wa = (workerArgs*) args;
@@ -49,7 +51,6 @@ void *service_single_client(void *args) {
     client.address = clientname;
     list_append(ourserver->userlist, &client);
 
-    
 	pthread_detach(pthread_self());
 
 	parse_message(socket, ourserver);

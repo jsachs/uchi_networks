@@ -122,12 +122,7 @@ int main(int argc, char *argv[])
 }
 
 void *accept_clients(void *args)
-{
-	#ifdef MUTEX
-	pthread_mutex_t s_lock;
-	pthread_mutex_init(&s_lock)
-	#endif
-	
+{	
     serverArgs *sa;
     chirc_server *ourserver;
      
