@@ -32,6 +32,8 @@ void do_registration(person *client, chirc_server *server);
 int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_USER(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_QUIT(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_PING(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
 
@@ -39,10 +41,14 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
 {
     char *command = params[0];
     
-    if      (strcmp(command, "NICK") == 0) chirc_handle_NICK(server, user, params);
-    else if (strcmp(command, "USER") == 0) chirc_handle_USER(server, user, params);
-    else if (strcmp(command, "QUIT") == 0) chirc_handle_QUIT(server, user, params);
-    else if (strcmp(command, "PING") == 0) chirc_handle_PING(server, user, params);
+    if      (strcmp(command, "NICK") == 0)    chirc_handle_NICK(server, user, params);
+    else if (strcmp(command, "USER") == 0)    chirc_handle_USER(server, user, params);
+    else if (strcmp(command, "QUIT") == 0)    chirc_handle_QUIT(server, user, params);
+    
+    else if (strcmp(command, "PRIVMSG") == 0) chirc_handle_PRIVMSG(server, user, params);
+    else if (strcmp(command, "NOTICE") == 0)  chirc_handle_NOTICE(server, user, params);
+    
+    else if (strcmp(command, "PING") == 0)    chirc_handle_PING(server, user, params);
     else if (strcmp(command, "PONG") == 0) ;
     else chirc_handle_UNKNOWN(server, user, params);
 }
@@ -118,6 +124,50 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
                       )
 {
 	return 0;
+}
+
+int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message params)
+{
+    char priv_msg[MAXMSG];
+    char reply[MAXMSG];
+    int senderSocket = user->clientSocket;
+    char *target_nick = params[1];
+    
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    seek_arg->field = NICK;
+    seek_arg->value = target_nick;
+    person *recippt = (person *)list_seek(server->userlist, seek_arg);
+    if (!recippt) {
+        constr_reply(ERR_NOSUCHNICK, user, reply, server, target_nick);
+        if(send(senderSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(senderSocket);
+            pthread_exit(NULL);
+        }
+    }
+    
+    
+    snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", recippt->nick,
+                                                         recippt->user,
+                                                         recippt->address,
+                                                         params[0],
+                                                         params[1],
+                                                         params[2]
+    );
+    strcat(priv_msg, "\r\n");
+    if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
+    {
+        perror("Socket send() failed");
+        close(recippt->clientSocket);
+        pthread_exit(NULL);
+    }
+    return 0;
+}
+
+int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params)
+{
+    return 0;
 }
 
 int chirc_handle_PING(chirc_server *server, person *user, chirc_message params){
