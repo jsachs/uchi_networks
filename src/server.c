@@ -54,6 +54,8 @@ void *service_single_client(void *args) {
 	pthread_detach(pthread_self());
 
 	parse_message(socket, ourserver);
+	
+	pthread_mutex_destroy(&(client.c_lock));
 
 	close(socket);
 	pthread_exit(NULL);

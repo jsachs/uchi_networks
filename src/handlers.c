@@ -80,11 +80,15 @@ int chirc_handle_NICK(chirc_server  *server, // current server
     }
     else{
         if (strlen(user->nick)){
+            pthread_mutex_lock(&(user->c_lock));
             strcpy(user->nick, newnick);
+            pthread_mutex_unlock(&(user->c_lock));
             // deal with a change in nick
         }
         else{
+            pthread_mutex_lock(&(user->c_lock));
             strcpy(user->nick, newnick);
+            pthread_mutex_unlock(&(user->c_lock));
             if (strlen(user->user))
                 do_registration(user, server);
         }
@@ -115,8 +119,10 @@ int chirc_handle_USER(chirc_server  *server, // current server
         pthread_mutex_unlock(&(user->c_lock));
     }
     else {
+        pthread_mutex_lock(&(user->c_lock));
         strcpy(user->user, username);
         strcpy(user->fullname, fullname);
+        pthread_mutex_unlock(&(user->c_lock));
         if(strlen(user->nick))
             do_registration(user, server);
     }
@@ -145,16 +151,19 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
     if (!recippt) {
         constr_reply(ERR_NOSUCHNICK, user, reply, server, target_nick);
         
+        pthread_mutex_lock(&(user->c_lock));
         if(send(senderSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
             close(senderSocket);
             pthread_exit(NULL);
         }
+        pthread_mutex_unlock(&(user->c_lock));
         
     }
     else
     {
+       pthread_mutex_lock(&(user->c_lock));
        snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
                                                             user->user,
                                                             user->address,
@@ -171,6 +180,7 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
             close(recippt->clientSocket);
             pthread_exit(NULL);
         }
+        pthread_mutex_unlock(&(user->c_lock));
     } 
     return 0;
 }
@@ -187,6 +197,7 @@ int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params
     person *recippt = (person *)list_seek(server->userlist, seek_arg);
     if (recippt)
     {
+        pthread_mutex_lock(&(user->c_lock));
         snprintf(notice, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
                                                            user->user,
                                                            user->address,
@@ -203,6 +214,7 @@ int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params
             close(recippt->clientSocket);
             pthread_exit(NULL);
         }
+        pthread_mutex_unlock(&(user->c_lock));
     }
 
     return 0;
@@ -212,9 +224,11 @@ int chirc_handle_PING(chirc_server *server, person *user, chirc_message params){
     char PONGback[MAXMSG];
     int clientSocket = user->clientSocket;
     char *servername = malloc(strlen(server->servername) + 1);
+    pthread_mutex_lock(&(user->c_lock));
     strcpy(servername, server->servername);
     snprintf(PONGback, MAXMSG - 2, "PONG %s", servername);
     strcat(PONGback, "\r\n");
+    pthread_mutex_unlock(&(user->c_lock));
     
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, PONGback, strlen(PONGback), 0) == -1)

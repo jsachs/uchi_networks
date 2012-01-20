@@ -31,7 +31,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
     char *servname = server->servername;
     char *version = server->version;
     char prefix[MAXMSG] = ":";
+    pthread_mutex_lock(&(client->c_lock));
     strcat(prefix, servname);
+    pthread_mutex_unlock(&(client->c_lock));
     char *nick = client->nick;
     if (strlen(nick) == 0) {
         nick = "*";
@@ -40,53 +42,83 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
     char *msg_clnt = client->address;
     switch (replcode){
         case 1:  // 001
+            pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":Welcome to the Internet Relay Network %s!%s@%s", nick, user, msg_clnt);
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 2:
+            pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":Your host is %s running version %s", servname, version);
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 3:
+            pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":This server was created %s", server->birthday);
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 4:
+            pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s %s ao mtov", servname, version); 
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 251:
+            pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, ":There are 1 users and 0 services on 1 servers");
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 252:
+            pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, "0 :operator(s) online");
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 253:
+            pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, "0 :unknown connection(s)");
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 254:
+            pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, "0 :channels formed");
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 255:
+            pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, ":I have 1 clients and 1 servers");
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 401:
+            pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :No such nick/channel", extra);
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 421:
+            pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :Unknown command", extra);
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 422:
-             strcpy(replmsg, ":MOTD File is missing");
-             break;
+            pthread_mutex_lock(&(client->c_lock));
+            strcpy(replmsg, ":MOTD File is missing");
+            pthread_mutex_unlock(&(client->c_lock));
+            break;
         case 433:
+            pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :Nickname is already in use", extra);
+            pthread_mutex_unlock(&(client->c_lock));
             break;
         case 462:
-             strcpy(replmsg, ":Unauthorized command (already registered)");
-             break;
+            pthread_mutex_lock(&(client->c_lock));
+            strcpy(replmsg, ":Unauthorized command (already registered)");
+            pthread_mutex_unlock(&(client->c_lock));
+            break;
         
         default:
             break;
     }
+    pthread_mutex_lock(&(client->c_lock));
     snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, nick, replmsg);
     strcat(reply, "\r\n");
+    pthread_mutex_unlock(&(client->c_lock));
     return;
 }
 
@@ -105,23 +137,28 @@ void do_registration(person *client, chirc_server *server){
                         RPL_LUSERME};
     for (i = 0; i < 9; i++){
         constr_reply(replies[i], client, reply , server, NULL);
+        
+        pthread_mutex_lock(&(client->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
             close(clientSocket);
             pthread_exit(NULL);
         }
+        pthread_mutex_unlock(&(client->c_lock));
     }
     
     //later there will be more to MOTD stuff than this
     constr_reply(ERR_NOMOTD, client, reply, server, NULL);
+    
+    pthread_mutex_lock(&(client->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
         perror("Socket send() failed");
         close(clientSocket);
         pthread_exit(NULL);
     }
-    
+    pthread_mutex_unlock(&(client->c_lock));
 }
 
 int fun_seek(const void *el, const void *indicator){
