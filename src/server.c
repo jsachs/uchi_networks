@@ -27,6 +27,8 @@
 
 #define MAXMSG 512
 
+extern pthread_mutex_t lock;
+
 void parse_message(int clientSocket, chirc_server *server);
 
 void *service_single_client(void *args) {
@@ -49,11 +51,16 @@ void *service_single_client(void *args) {
     clientname = wa->clientname;
     client.clientSocket = socket;
     client.address = clientname;
+    
+    pthread_mutex_lock(&lock);
     list_append(ourserver->userlist, &client);
+    pthread_mutex_unlock(&lock);
 
 	pthread_detach(pthread_self());
 
 	parse_message(socket, ourserver);
+	
+	pthread_mutex_destroy(&(client.c_lock));
 
 	close(socket);
 	pthread_exit(NULL);
