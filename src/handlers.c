@@ -175,7 +175,7 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
     }
     else
     {
-       pthread_mutex_lock(&(recippt->c_lock));
+       pthread_mutex_lock(&(user->c_lock));
        snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
                                                             user->user,
                                                             user->address,
@@ -184,8 +184,9 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
                                                             params[2]
         );
         strcat(priv_msg, "\r\n");
-    
-    
+        pthread_mutex_unlock(&(user->c_lock));    
+        
+        pthread_mutex_lock(&(recippt->c_lock));
         if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
         {
             perror("Socket send() failed");
