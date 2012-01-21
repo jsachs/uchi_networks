@@ -24,6 +24,8 @@
 #include "simclist.h"
 #include "ircstructs.h"
 
+int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
+
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra) {
     int replcode = atoi(code);
     char replmsg[MAXMSG];
@@ -84,6 +86,21 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 255:
             pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, ":I have 1 clients and 1 servers");
+            pthread_mutex_unlock(&(client->c_lock));
+            break;
+        case 375:
+            pthread_mutex_lock(&(client->c_lock));
+            sprintf(replmsg, ":- %s Message of the day - ", servname);
+            pthread_mutex_unlock(&(client->c_lock));
+            break;
+        case 372:
+            pthread_mutex_lock(&(client->c_lock));
+            sprintf(replmsg, ":- %s", extra);
+            pthread_mutex_unlock(&(client->c_lock));
+            break;
+        case 376:
+            pthread_mutex_lock(&(client->c_lock));
+            sprintf(replmsg, ":- End of MOTD command");
             pthread_mutex_unlock(&(client->c_lock));
             break;
         case 401:
@@ -148,17 +165,7 @@ void do_registration(person *client, chirc_server *server){
         pthread_mutex_unlock(&(client->c_lock));
     }
     
-    //later there will be more to MOTD stuff than this
-    constr_reply(ERR_NOMOTD, client, reply, server, NULL);
-    
-    pthread_mutex_lock(&(client->c_lock));
-    if(send(clientSocket, reply, strlen(reply), 0) == -1)
-    {
-        perror("Socket send() failed");
-        close(clientSocket);
-        pthread_exit(NULL);
-    }
-    pthread_mutex_unlock(&(client->c_lock));
+    chirc_handle_MOTD(server, client, NULL);
 }
 
 int fun_seek(const void *el, const void *indicator){

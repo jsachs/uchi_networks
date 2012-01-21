@@ -24,6 +24,8 @@
 
 #define MAXMSG 512
 
+extern pthread_mutex_t lock;
+
 void parse(char *msg, int clientSocket, chirc_server *server);
 void constr_reply(char code[4], person *nick, char *param);
 void handle_chirc_message(chirc_server *server, person *user, chirc_message params);
@@ -50,15 +52,18 @@ void parse_message(int clientSocket, chirc_server *server)
         
         seek_arg->field = FD;
         seek_arg->fd = clientSocket;
+        
+        pthread_mutex_lock(&lock);
         person *clientpt = (person *)list_seek(server->userlist, seek_arg);
-          
-        pthread_mutex_lock(&(clientpt->c_lock));
+        pthread_mutex_unlock(&lock);
+        
+        //pthread_mutex_lock(&(clientpt->c_lock));
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) == -1) {
             perror("ERROR: recv failure");
             close(clientSocket);
             pthread_exit(NULL);
         }
-        pthread_mutex_unlock(&(clientpt->c_lock));
+        //pthread_mutex_unlock(&(clientpt->c_lock));
         
         if(nbytes == 0){
             printf("Connection closed by client\n");
@@ -135,7 +140,10 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
     //may want to modify this to get by pthread id, not fd
     seek_arg->field = FD;
     seek_arg->fd = clientSocket;
+    
+    pthread_mutex_lock(&lock);
     person *clientpt = (person *)list_seek(server->userlist, seek_arg);
+    pthread_mutex_unlock(&lock);
     // process to break a message into its component commands/parameters
     // potentially clean this up to ultilize strtok() at some point
     while(msg[counter] != '\0'){

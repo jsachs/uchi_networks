@@ -27,9 +27,9 @@
 #define HOSTNAMELEN 30
 #define NLOOPS 1000000
 
-#ifdef MUTEX
+
 pthread_mutex_t lock;
-#endif
+
 
 void *accept_clients(void *args);
 void *service_single_client(void *args);
@@ -99,9 +99,7 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
     
-    #ifdef MUTEX
 	pthread_mutex_init(&lock, NULL);
-	#endif
     
     sa = malloc(sizeof(serverArgs));
     sa->server = ourserver;
@@ -114,9 +112,7 @@ int main(int argc, char *argv[])
     
 	pthread_join(server_thread, NULL);
     
-	#ifdef MUTEX
 	pthread_mutex_destroy(&lock);
-	#endif
     
 	pthread_exit(NULL);
 }
@@ -147,20 +143,20 @@ void *accept_clients(void *args)
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE/*|AI_CANONNAME*/;
 
-	//pthread_mutex_lock(&lock);
+	pthread_mutex_lock(&lock);
 	if (getaddrinfo(NULL, port, &hints, &res) != 0)
 	{
 		perror("getaddrinfo() failed");
 		pthread_exit(NULL);
 	}
-    //pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&lock);
     
-    //pthread_mutex_lock(&lock);
+    pthread_mutex_lock(&lock);
     //servname = res->ai_canonname;
     gethostname(servname, MAXMSG);
     ourserver->servername = malloc(strlen(servname));
     strcpy(ourserver->servername, servname);
-    //pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&lock);
     
 	for(p = res;p != NULL; p = p->ai_next) 
 	{
