@@ -406,24 +406,24 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     char reply[MAXMSG];
     char stats[2];
     int clientSocket = user->clientSocket;
-    person *someperson;
-    unsigned int known = 0;
     unsigned int unknown;
     
     //check number of known connections
     pthread_mutex_lock(&lock);
     unsigned int userme = list_size(server->userlist);
     unsigned int numchannels = list_size(server->chanlist);
+    unsigned int known = server->numregistered;
+    /*
     list_iterator_start(server->userlist); //should error-check?
     while (list_iterator_hasnext(server->userlist)){
         someperson = (person *)list_iterator_next(server->userlist);
         if(strlen(someperson->nick) && strlen(someperson->user))
             known++;
     }
-    list_iterator_stop(server->userlist);
+    list_iterator_stop(server->userlist);*/
     pthread_mutex_unlock(&lock);
     
-    sprintf(stats, "%d", known);
+    sprintf(stats, "%u", known);
     
 
     constr_reply(RPL_LUSERCLIENT, user, reply, server, stats);
@@ -440,7 +440,7 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     pthread_mutex_unlock(&(user->c_lock));
     
     //we'll check for operators during the iteration session once we've implemented OPER
-    sprintf(stats, "%d", 0);
+    sprintf(stats, "%u", 0);
     
     constr_reply(RPL_LUSEROP, user, reply, server, stats);
     
@@ -457,7 +457,7 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     pthread_mutex_unlock(&(user->c_lock));
     
     unknown = userme - known;
-    sprintf(stats, "%d", unknown);
+    sprintf(stats, "%u", unknown);
     
     constr_reply(RPL_LUSERUNKNOWN, user, reply, server, stats);
     
@@ -473,7 +473,7 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     }
     pthread_mutex_unlock(&(user->c_lock));
     
-    sprintf(stats, "%d", numchannels);
+    sprintf(stats, "%u", numchannels);
     
     constr_reply(RPL_LUSERCHANNELS, user, reply, server, stats);
     pthread_mutex_lock(&(user->c_lock));
@@ -488,7 +488,7 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     }
     pthread_mutex_unlock(&(user->c_lock));
     
-    sprintf(stats, "%d", userme);
+    sprintf(stats, "%u", userme);
     constr_reply(RPL_LUSERME, user, reply, server, stats);
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)

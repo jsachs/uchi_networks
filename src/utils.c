@@ -24,8 +24,10 @@
 #include "simclist.h"
 #include "ircstructs.h"
 
+extern pthread_mutex_t lock;
+
 int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
-int chirc_handle_LUSER(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params);
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra) {
     int replcode = atoi(code);
@@ -153,6 +155,10 @@ void do_registration(person *client, chirc_server *server){
                         RPL_LUSERUNKNOWN,
                         RPL_LUSERCHANNELS,
                         RPL_LUSERME*/};
+    pthread_mutex_lock(&lock);
+    (server->numregistered)++;
+    pthread_mutex_unlock(&lock);
+    
     for (i = 0; i < 4; i++){
         constr_reply(replies[i], client, reply , server, NULL);
         

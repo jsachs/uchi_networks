@@ -21,6 +21,7 @@ typedef struct {
     char *birthday;
     list_t *userlist;
     list_t *chanlist;
+    unsigned int numregistered;
 } chirc_server;
 
 

@@ -131,11 +131,15 @@ void parse_message(int clientSocket, chirc_server *server)
 
 void parse(char *msg, int clientSocket, chirc_server *server) {
     chirc_message params; // params[0] is command
+    int i;
     int counter = 0;
     int paramcounter = 0;
     int paramnum = 0;
     char reply[MAXMSG];
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    for(i = 0; i < MAXPARAMS; i++){
+        memset(params[i], '\0', MAXMSG);
+    }
     
     //may want to modify this to get by pthread id, not fd
     seek_arg->field = FD;
