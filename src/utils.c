@@ -90,6 +90,21 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, ":I have %s clients and 1 servers", extra);
             pthread_mutex_unlock(&(client->c_lock));
             break;
+        case 311:
+            pthread_mutex_lock(&(client->c_lock));
+            sprintf(replmsg, "%s", extra);
+            pthread_mutex_unlock(&(client->c_lock));
+            break;
+        case 312:
+            pthread_mutex_lock(&(client->c_lock));
+            sprintf(replmsg, "%s", extra);
+            pthread_mutex_unlock(&(client->c_lock));
+            break;
+        case 318: // RPL_ENDWHOIS
+            pthread_mutex_lock(&(client->c_lock));
+            sprintf(replmsg, "%s :End of WHOIS list", nick);
+            pthread_mutex_unlock(&(client->c_lock));
+            break;
         case 375:
             pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":- %s Message of the day - ", servname);
