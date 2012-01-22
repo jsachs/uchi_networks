@@ -29,7 +29,6 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra) {
     int replcode = atoi(code);
     char replmsg[MAXMSG];
-    char preset[MAXMSG];
     char *servname = server->servername;
     char *version = server->version;
     char prefix[MAXMSG] = ":";
@@ -221,4 +220,12 @@ int fun_seek(const void *el, const void *indicator){
             return 0;
             break;
     }
+}
+
+void logprint (logentry *tolog, chirc_server *ourserver){
+    FILE *logpt = fopen("log.txt", "a");
+    fprintf(logpt, "Received message \"%s\" from %s, sent message \"%s\" to %s\n", tolog->msgin, tolog->userin, tolog->msgout, tolog->userout);
+    fclose(logpt);
+    return;
+    
 }

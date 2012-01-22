@@ -146,6 +146,10 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
     pthread_mutex_unlock(&lock);
     // process to break a message into its component commands/parameters
     // potentially clean this up to ultilize strtok() at some point
+    
+    strcpy(clientpt->tolog->msgin, msg);
+    strcpy(clientpt->tolog->userin, clientpt->nick);
+    
     while(msg[counter] != '\0'){
         if (msg[counter] == ' '){
             params[paramnum][paramcounter] = '\0';

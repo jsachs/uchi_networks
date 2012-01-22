@@ -23,10 +23,16 @@ typedef struct {
     list_t *chanlist;
 } chirc_server;
 
-typedef struct {
-	list_t userlist;
-} chirc_user;
 
+typedef struct
+{
+    char msgin[MAXMSG];
+    char msgout[MAXMSG];
+    char userin[MAXMSG];
+    char userout[MAXMSG];
+} logentry;
+
+ 
 typedef char chirc_message[MAXPARAMS][MAXMSG-1];
 
 //element of userlist
@@ -37,6 +43,7 @@ typedef struct {
 	char  fullname[MAXMSG];
 	char* address;
 	pthread_mutex_t c_lock;
+    logentry *tolog;
 } person;
 
 //parameter for seeker function
@@ -58,6 +65,8 @@ typedef struct
     char *clientname;
 	int socket;
 } workerArgs;
+
+
 
 
 

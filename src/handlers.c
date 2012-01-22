@@ -27,9 +27,11 @@
 #define MAXMSG 512
 
 extern pthread_mutex_t lock;
+extern pthread_mutex_t loglock;
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
 void do_registration(person *client, chirc_server *server);
+void logprint (logentry *tolog, chirc_server *ourserver);
 
 int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_USER(chirc_server *server, person *user, chirc_message params);
@@ -183,16 +185,20 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
                                                             params[1],
                                                             params[2]
         );
+        strcpy(user->tolog->msgout, priv_msg);
         strcat(priv_msg, "\r\n");
         pthread_mutex_unlock(&(user->c_lock));    
-        
+        strcpy(user->tolog->userout, params[1]);
         pthread_mutex_lock(&(recippt->c_lock));
+        pthread_mutex_lock(&loglock);
         if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
         {
             perror("Socket send() failed");
             close(recippt->clientSocket);
             pthread_exit(NULL);
         }
+        logprint(user->tolog, server);
+        pthread_mutex_unlock(&loglock);
         pthread_mutex_unlock(&(recippt->c_lock));
     } 
     return 0;

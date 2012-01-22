@@ -29,6 +29,7 @@
 
 
 pthread_mutex_t lock;
+pthread_mutex_t loglock;
 
 
 void *accept_clients(void *args);
@@ -40,6 +41,7 @@ chirc_server *ourserver;
 
 int main(int argc, char *argv[])
 {
+    
     list_init(& userlist);
 	list_init(& chanlist);
     ourserver = malloc(sizeof(chirc_server));
@@ -100,6 +102,7 @@ int main(int argc, char *argv[])
 	}
     
 	pthread_mutex_init(&lock, NULL);
+    pthread_mutex_init(&loglock, NULL);
     
     sa = malloc(sizeof(serverArgs));
     sa->server = ourserver;
@@ -113,6 +116,7 @@ int main(int argc, char *argv[])
 	pthread_join(server_thread, NULL);
     
 	pthread_mutex_destroy(&lock);
+    pthread_mutex_destroy(&loglock);
     
 	pthread_exit(NULL);
 }
@@ -124,6 +128,7 @@ void *accept_clients(void *args)
      
     sa = (serverArgs*) args;
     ourserver = sa->server;
+
 
     char servname[MAXMSG];
     char *port = ourserver->port;
@@ -138,10 +143,11 @@ void *accept_clients(void *args)
 	
 	char hostname[HOSTNAMELEN];
     
+    
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE/*|AI_CANONNAME*/;
+	hints.ai_flags = AI_PASSIVE;
 
 	pthread_mutex_lock(&lock);
 	if (getaddrinfo(NULL, port, &hints, &res) != 0)
@@ -152,7 +158,6 @@ void *accept_clients(void *args)
     pthread_mutex_unlock(&lock);
     
     pthread_mutex_lock(&lock);
-    //servname = res->ai_canonname;
     gethostname(servname, MAXMSG);
     ourserver->servername = malloc(strlen(servname));
     strcpy(ourserver->servername, servname);
