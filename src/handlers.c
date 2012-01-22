@@ -157,9 +157,9 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
     if(strlen(msg[1]))
         quitmsg = msg[1];
     else
-        quitmsg = "Client Quit";
+        quitmsg = ":Client Quit";
     
-    snprintf(reply, MAXMSG - 2, ":%s!%s@%s QUIT :%s", user->nick, user->user, user->address, quitmsg);
+    snprintf(reply, MAXMSG - 2, ":%s!%s@%s QUIT %s", user->nick, user->user, user->address, quitmsg);
     pthread_mutex_lock(&(user->c_lock));
     
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
