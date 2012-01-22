@@ -25,6 +25,7 @@
 #include "ircstructs.h"
 
 int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_LUSER(chirc_server *server, person *user, chirc_message params);
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra) {
     int replcode = atoi(code);
@@ -65,27 +66,27 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             break;
         case 251:
             pthread_mutex_lock(&(client->c_lock));
-            strcpy(replmsg, ":There are 1 users and 0 services on 1 servers");
+            sprintf(replmsg, ":There are %s users and 0 services on 1 servers", extra);
             pthread_mutex_unlock(&(client->c_lock));
             break;
         case 252:
             pthread_mutex_lock(&(client->c_lock));
-            strcpy(replmsg, "0 :operator(s) online");
+            sprintf(replmsg, "%s :operator(s) online", extra);
             pthread_mutex_unlock(&(client->c_lock));
             break;
         case 253:
             pthread_mutex_lock(&(client->c_lock));
-            strcpy(replmsg, "0 :unknown connection(s)");
+            sprintf(replmsg, "%s :unknown connection(s)", extra);
             pthread_mutex_unlock(&(client->c_lock));
             break;
         case 254:
             pthread_mutex_lock(&(client->c_lock));
-            strcpy(replmsg, "0 :channels formed");
+            sprintf(replmsg, "%s :channels formed", extra);
             pthread_mutex_unlock(&(client->c_lock));
             break;
         case 255:
             pthread_mutex_lock(&(client->c_lock));
-            strcpy(replmsg, ":I have 1 clients and 1 servers");
+            sprintf(replmsg, ":I have %s clients and 1 servers", extra);
             pthread_mutex_unlock(&(client->c_lock));
             break;
         case 375:
@@ -147,12 +148,13 @@ void do_registration(person *client, chirc_server *server){
                         RPL_YOURHOST,
                         RPL_CREATED,
                         RPL_MYINFO,
+                        /*
                         RPL_LUSERCLIENT,
                         RPL_LUSEROP,
                         RPL_LUSERUNKNOWN,
                         RPL_LUSERCHANNELS,
-                        RPL_LUSERME};
-    for (i = 0; i < 9; i++){
+                        RPL_LUSERME*/};
+    for (i = 0; i < 4; i++){
         constr_reply(replies[i], client, reply , server, NULL);
         
         pthread_mutex_lock(&(client->c_lock));
@@ -165,6 +167,7 @@ void do_registration(person *client, chirc_server *server){
         pthread_mutex_unlock(&(client->c_lock));
     }
     
+    chirc_handle_LUSERS(server, client, NULL);
     chirc_handle_MOTD(server, client, NULL);
 }
 
