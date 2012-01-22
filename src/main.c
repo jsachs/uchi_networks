@@ -78,7 +78,6 @@ int main(int argc, char *argv[])
 	}
     
     /*initialize chirc_server struct*/
-    ourserver = malloc(sizeof(chirc_server));
     ourserver->userlist = &userlist;
     ourserver->chanlist = &chanlist;
     ourserver->port = port;
@@ -113,7 +112,6 @@ int main(int argc, char *argv[])
 	pthread_join(server_thread, NULL);
     
 	pthread_mutex_destroy(&lock);
-    
 	pthread_exit(NULL);
 }
 
@@ -124,6 +122,7 @@ void *accept_clients(void *args)
      
     sa = (serverArgs*) args;
     ourserver = sa->server;
+    free(sa);
 
     char servname[MAXMSG];
     char *port = ourserver->port;
