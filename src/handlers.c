@@ -38,6 +38,8 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
 int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_PING(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
 
 void handle_chirc_message(chirc_server *server, person *user, chirc_message params)
@@ -50,6 +52,9 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
     
     else if (strcmp(command, "PRIVMSG") == 0) chirc_handle_PRIVMSG(server, user, params);
     else if (strcmp(command, "NOTICE") == 0)  chirc_handle_NOTICE(server, user, params);
+    
+    else if (strcmp(command, "WHOIS") == 0)   chirc_handle_WHOIS(server, user, params);
+    //else if (strcmp(command, "LUSERS") == 0)  chirc_handle_LUSERS(server, user, params);
     
     else if (strcmp(command, "PING") == 0)    chirc_handle_PING(server, user, params);
     else if (strcmp(command, "PONG") == 0) ;
@@ -116,6 +121,8 @@ int chirc_handle_USER(chirc_server  *server, // current server
     char *username = msg[1];
     char *fullname = msg[4];
     
+    memmove(fullname, fullname+1, strlen(fullname));
+    
     if ( strlen(user->user) && strlen(user->nick) ) {
         constr_reply(ERR_ALREADYREGISTRED, user, reply, server, NULL);
         
@@ -175,13 +182,13 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
     }
     else
     {
-       pthread_mutex_lock(&(user->c_lock));
-       snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
-                                                            user->user,
-                                                            user->address,
-                                                            params[0],
-                                                            params[1],
-                                                            params[2]
+        pthread_mutex_lock(&(user->c_lock));
+        snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
+                                                             user->user,
+                                                             user->address,
+                                                             params[0],
+                                                             params[1],
+                                                             params[2]
         );
         strcat(priv_msg, "\r\n");
         pthread_mutex_unlock(&(user->c_lock));    
@@ -323,7 +330,84 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params)
     return 0;
 }
     
+int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params)
+{
+    char reply[MAXMSG];
+    char wiuser[MAXMSG];
+    char wiserver[MAXMSG];
+    int clientSocket = user->clientSocket;
+    char *target_nick = params[1];
     
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    seek_arg->field = NICK;
+    seek_arg->value = target_nick;
+    pthread_mutex_lock(&lock);
+    person *whoispt = (person *)list_seek(server->userlist, seek_arg);
+    pthread_mutex_unlock(&lock);
+    if (!whoispt) {
+        constr_reply(ERR_NOSUCHNICK, user, reply, server, target_nick);
+        
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));    
+    }
+    else
+    {
+        pthread_mutex_lock(&(user->c_lock));
+        snprintf(wiuser, MAXMSG - 2, "%s %s %s * :%s", params[1],
+                                                       whoispt->user,
+                                                       whoispt->address,
+                                                       whoispt->fullname
+        );
+        pthread_mutex_unlock(&(user->c_lock));    
+        
+        constr_reply(RPL_WHOISUSER, user, reply, server, wiuser);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        pthread_mutex_lock(&(user->c_lock));
+        
+        snprintf(wiserver, MAXMSG - 2, "%s %s :%s", params[1],
+                                                    whoispt->address,
+                                                    "<server info>"
+        );
+        pthread_mutex_unlock(&(user->c_lock));    
+        
+        constr_reply(RPL_WHOISSERVER, user, reply, server, wiserver);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        constr_reply(RPL_ENDOFWHOIS, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+    }
+    
+    return 0;
+}
     
     
 
