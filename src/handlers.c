@@ -80,6 +80,7 @@ int chirc_handle_NICK(chirc_server  *server, // current server
     pthread_mutex_lock(&lock);
     person *clientpt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
+    free(seek_arg);
     
     if (clientpt) {
         constr_reply(ERR_NICKNAMEINUSE, user, reply, server, newnick);
@@ -88,6 +89,9 @@ int chirc_handle_NICK(chirc_server  *server, // current server
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
             close(clientSocket);
             pthread_exit(NULL);
         }
@@ -131,6 +135,9 @@ int chirc_handle_USER(chirc_server  *server, // current server
         {
             perror("Socket send() failed");
             close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
             pthread_exit(NULL);
         }
         pthread_mutex_unlock(&(user->c_lock));
@@ -151,7 +158,43 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
 						 chirc_message msg     // message to be sent
                       )
 {
-	return 0;
+	char reply[MAXMSG];
+    char *quitmsg;
+    int clientSocket = user->clientSocket;
+    if(strlen(msg[1]))
+        quitmsg = msg[1];
+    else
+        quitmsg = ":Client Quit";
+    
+    snprintf(reply, MAXMSG - 2, ":%s!%s@%s QUIT %s", user->nick, user->user, user->address, quitmsg);
+    pthread_mutex_lock(&(user->c_lock));
+    
+    if(send(clientSocket, reply, strlen(reply), 0) == -1)
+    {
+        perror("Socket send() failed");
+        close(clientSocket);
+        pthread_mutex_lock(&lock);
+        list_delete(server->userlist, user);
+        pthread_mutex_unlock(&lock);
+        pthread_exit(NULL);
+    }
+    
+    pthread_mutex_unlock(&(user->c_lock));
+    snprintf(reply, MAXMSG - 2, "ERROR :Closing Link: %s (%s)", user->address, quitmsg);
+    pthread_mutex_lock(&(user->c_lock));
+    
+    if(send(clientSocket, reply, strlen(reply), 0) == -1)
+    {
+        perror("Socket send() failed");
+    }
+    close(clientSocket);
+    pthread_mutex_unlock(&(user->c_lock));
+    pthread_mutex_lock(&lock);
+    list_delete(server->userlist, user);
+    pthread_mutex_unlock(&lock);
+    pthread_exit(NULL);
+    
+    return 0;
 }
 
 int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message params)
@@ -167,6 +210,8 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
     pthread_mutex_lock(&lock);
     person *recippt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
+    free(seek_arg);
+    
     if (!recippt) {
         constr_reply(ERR_NOSUCHNICK, user, reply, server, target_nick);
         
@@ -175,6 +220,9 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
         {
             perror("Socket send() failed");
             close(senderSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
             pthread_exit(NULL);
         }
         pthread_mutex_unlock(&(user->c_lock));
@@ -198,6 +246,9 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
         {
             perror("Socket send() failed");
             close(recippt->clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, recippt);
+            pthread_mutex_unlock(&lock);
             pthread_exit(NULL);
         }
         pthread_mutex_unlock(&(recippt->c_lock));
@@ -208,7 +259,6 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
 int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params)
 {
     char notice[MAXMSG];
-    int senderSocket = user->clientSocket;
     char *target_nick = params[1];
     
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
@@ -217,6 +267,8 @@ int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params
     pthread_mutex_lock(&lock);
     person *recippt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
+    free(seek_arg);
+    
     if (recippt)
     {
         pthread_mutex_lock(&(recippt->c_lock));
@@ -234,6 +286,9 @@ int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params
         {
             perror("Socket send() failed");
             close(recippt->clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
             pthread_exit(NULL);
         }
         pthread_mutex_unlock(&(recippt->c_lock));
@@ -252,12 +307,16 @@ int chirc_handle_PING(chirc_server *server, person *user, chirc_message params){
     snprintf(PONGback, MAXMSG - 2, "PONG %s", servername);
     strcat(PONGback, "\r\n");
     pthread_mutex_unlock(&lock);
+    free(servername);
     
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, PONGback, strlen(PONGback), 0) == -1)
     {
         perror("Socket send() failed");
         close(clientSocket);
+        pthread_mutex_lock(&lock);
+        list_delete(server->userlist, user);
+        pthread_mutex_unlock(&lock);
         pthread_exit(NULL);
     }
     pthread_mutex_unlock(&(user->c_lock));
@@ -281,6 +340,9 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params)
         {
             perror("Socket send() failed");
             close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
             pthread_exit(NULL);
         }
         pthread_mutex_unlock(&(user->c_lock));
@@ -294,6 +356,9 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params)
         {
             perror("Socket send() failed");
             close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
             pthread_exit(NULL);
         }
         pthread_mutex_unlock(&(user->c_lock));
@@ -310,6 +375,9 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params)
             if(send(clientSocket, reply, strlen(reply), 0) == -1)
             {
                 perror("Socket send() failed");
+                pthread_mutex_lock(&lock);
+                list_delete(server->userlist, user);
+                pthread_mutex_unlock(&lock);
                 close(clientSocket);
                 pthread_exit(NULL);
             }
@@ -322,6 +390,9 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params)
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
             close(clientSocket);
             pthread_exit(NULL);
         }
@@ -421,6 +492,9 @@ int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message param
     {
         perror("Socket send() failed");
         close(clientSocket);
+        pthread_mutex_lock(&lock);
+        list_delete(server->userlist, user);
+        pthread_mutex_unlock(&lock);
         pthread_exit(NULL);
     }
     pthread_mutex_unlock(&(user->c_lock));
