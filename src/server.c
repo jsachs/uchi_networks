@@ -51,7 +51,11 @@ void *service_single_client(void *args) {
     clientname = wa->clientname;
     client.clientSocket = socket;
     client.address = clientname;
+    
     free(wa);
+
+    client.tolog = malloc(sizeof(logentry));
+
     
     pthread_mutex_lock(&lock);
     list_append(ourserver->userlist, &client);
