@@ -25,6 +25,7 @@
 #define MAXMSG 512
 
 extern pthread_mutex_t lock;
+extern pthread_mutex_t loglock;
 
 void parse(char *msg, int clientSocket, chirc_server *server);
 void constr_reply(char code[4], person *nick, char *param);
@@ -42,6 +43,7 @@ void parse_message(int clientSocket, chirc_server *server)
     int nbytes = 0;           // used in constructing message to be sent
     int truncated = 0;        // used to track occurence of the end of a truncated message
     int CRLFsplit = 0;        // tracks the \r\n in difference message receptions
+    char logerror[MAXMSG];
     
     memset(msg, '\0', MAXMSG - 1);
     
@@ -59,7 +61,11 @@ void parse_message(int clientSocket, chirc_server *server)
         
         //pthread_mutex_lock(&(clientpt->c_lock));
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) == -1) {
-            perror("ERROR: recv failure");
+            pthread_mutex_lock(&loglock);
+            sprintf(logerror, "recv from socket %d failed with errno %d\n", clientSocket, errno);
+            logprint(NULL, server, logerror);
+            pthread_mutex_unlock(&loglock);
+            //perror("ERROR: recv failure");
             close(clientSocket);
             pthread_exit(NULL);
         }

@@ -246,9 +246,12 @@ int fun_seek(const void *el, const void *indicator){
     }
 }
 
-void logprint (logentry *tolog, chirc_server *ourserver){
+void logprint (logentry *tolog, chirc_server *ourserver, char *message){
     FILE *logpt = fopen("log.txt", "a");
-    fprintf(logpt, "Received message \"%s\" from %s, sent message \"%s\" to %s\n", tolog->msgin, tolog->userin, tolog->msgout, tolog->userout);
+    if(tolog != NULL)
+        fprintf(logpt, "Received message \"%s\" from %s, sent message \"%s\" to %s\n", tolog->msgin, tolog->userin, tolog->msgout, tolog->userout);
+    else
+        fprintf(logpt, "%s\n", message);
     fclose(logpt);
     return;
     
