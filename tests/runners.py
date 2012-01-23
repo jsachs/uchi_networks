@@ -30,14 +30,14 @@ def get_test_list(obj):
 def get_scores(result):
     alltests = get_test_list(tests.alltests)
     alltests_methods = dict([(t._testMethodName, getattr(t, t._testMethodName)) for t in alltests])
-
+    
     failed_names = set([t._testMethodName for t,e in result.errors + result.failures])
-
+    
     scores = {}
     for proj in tests.scores.PROJECTS:
         scores[proj.name] = {}
         for cid in proj.lcategories:
-	    ctests_names = set([name for name, method in alltests_methods.items() if method.category == cid and method.points == True])
+            ctests_names = set([name for name, method in alltests_methods.items() if method.category == cid and method.points == True])
             num_total = len(ctests_names)
             num_failed = len(ctests_names & failed_names)
             num_success = num_total - num_failed
@@ -48,32 +48,48 @@ def html_runner(html_file):
     # output to a file
     fp = file(html_file, 'wb')
     runner = HTMLTestRunner.HTMLTestRunner(
-                stream=fp,
-                verbosity = 0,
-                title='chirc',
-                description='Results of running all chirc unit tests'
-                )
+                                           stream=fp,
+                                           verbosity = 0,
+                                           title='chirc',
+                                           description='Results of running all chirc unit tests'
+                                           )
     
     # run the test
     result = runner.run(tests.alltests)
     return result
 
-def grade_runner(csv, exe = None):
+def grade_runner(csv, htmlfile = None, exe = None, fast = 0):
     if exe != None:
         tests.common.ChircTestCase.CHIRC_EXE = exe
-
-    if not csv:
-        stream = sys.stderr
+    
+    if fast == 1:
+        tests.common.ChircTestCase.MESSAGE_TIMEOUT = 0.2
+        tests.common.ChircTestCase.INTERTEST_PAUSE = 0.0
     else:
-        stream = open("/dev/null", "w")
-
-    runner = unittest.TextTestRunner(stream = stream)
+        tests.common.ChircTestCase.MESSAGE_TIMEOUT = 1.0
+        tests.common.ChircTestCase.INTERTEST_PAUSE = 0.15
+    
+    if htmlfile is not None:
+        fp = file(htmlfile, 'wb')
+        runner = HTMLTestRunner.HTMLTestRunner(
+                                               stream=fp,
+                                               verbosity = 0,
+                                               title='chirc',
+                                               description='Results of running all chirc unit tests'
+                                               )
+    else:
+        if not csv:
+            stream = sys.stderr
+        else:
+            stream = open("/dev/null", "w")
+        
+        runner = unittest.TextTestRunner(stream = stream)
     
     # run the test
     result = runner.run(tests.alltests)
-
+    
     scores = get_scores(result)
-
+    
     pscores = []
     for proj in tests.scores.PROJECTS:
         pscore = 0.0
@@ -85,12 +101,12 @@ def grade_runner(csv, exe = None):
         for cid in proj.lcategories:
             (num_success, num_failed, num_total) = scores[proj.name][cid]
             cname, cpoints = proj.categories[cid]
-
+            
             if num_total == 0:
                 cscore = 0.0
             else:
                 cscore = (float(num_success) / num_total) * cpoints
-
+            
             pscore += cscore
             
             if not csv:

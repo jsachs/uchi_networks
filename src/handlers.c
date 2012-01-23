@@ -487,7 +487,6 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
     pthread_mutex_lock(&lock);
     person *whoispt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
-<<<<<<< HEAD
     
     //no such person
     if (!whoispt) {
