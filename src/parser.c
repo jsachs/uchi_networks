@@ -25,10 +25,13 @@
 #define MAXMSG 512
 
 extern pthread_mutex_t lock;
+extern pthread_mutex_t loglock;
 
 void parse(char *msg, int clientSocket, chirc_server *server);
 void constr_reply(char code[4], person *nick, char *param);
 void handle_chirc_message(chirc_server *server, person *user, chirc_message params);
+
+void logprint (logentry *tolog, chirc_server *ourserver, char *message);
 
 //parse incoming data into messages, to deal with as needed
 void parse_message(int clientSocket, chirc_server *server)
@@ -42,6 +45,7 @@ void parse_message(int clientSocket, chirc_server *server)
     int nbytes = 0;           // used in constructing message to be sent
     int truncated = 0;        // used to track occurence of the end of a truncated message
     int CRLFsplit = 0;        // tracks the \r\n in difference message receptions
+    char logerror[MAXMSG];
     
     memset(msg, '\0', MAXMSG - 1);
     
@@ -57,16 +61,23 @@ void parse_message(int clientSocket, chirc_server *server)
         person *clientpt = (person *)list_seek(server->userlist, seek_arg);
         pthread_mutex_unlock(&lock);
         
-        //pthread_mutex_lock(&(clientpt->c_lock));
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) == -1) {
-            perror("ERROR: recv failure");
+            pthread_mutex_lock(&loglock);
+            sprintf(logerror, "recv from socket %d failed with errno %d\n", clientSocket, errno);
+            logprint(NULL, server, logerror);
+            pthread_mutex_unlock(&loglock);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, clientpt);
+            pthread_mutex_unlock(&lock);
             close(clientSocket);
             pthread_exit(NULL);
         }
-        //pthread_mutex_unlock(&(clientpt->c_lock));
         
         if(nbytes == 0){
             printf("Connection closed by client\n");
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, clientpt);
+            pthread_mutex_unlock(&lock);
             close(clientSocket);
             pthread_exit(NULL);
         }
@@ -134,18 +145,20 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
     int counter = 0;
     int paramcounter = 0;
     int paramnum = 0;
-    char reply[MAXMSG];
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     
-    //may want to modify this to get by pthread id, not fd
     seek_arg->field = FD;
     seek_arg->fd = clientSocket;
     
     pthread_mutex_lock(&lock);
     person *clientpt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
+
+    //note in log structure what message is and where it came from
+    strcpy(clientpt->tolog->msgin, msg);
+    strcpy(clientpt->tolog->userin, clientpt->nick);
+    
     // process to break a message into its component commands/parameters
-    // potentially clean this up to ultilize strtok() at some point
     while(msg[counter] != '\0'){
         if (msg[counter] == ' '){
             params[paramnum][paramcounter] = '\0';

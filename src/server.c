@@ -34,9 +34,8 @@ void parse_message(int clientSocket, chirc_server *server);
 void *service_single_client(void *args) {
 	
 	workerArgs *wa;
-	int socket, nbytes, i;
+	int socket;
 	chirc_server *ourserver;
-	char buffer[100];
     char *clientname;
     person client;
     client.nick[0] = '\0';
@@ -44,20 +43,28 @@ void *service_single_client(void *args) {
     client.fullname[0] = '\0';
     pthread_mutex_init(&(client.c_lock), NULL);
     
-    
+    //unpack arguments
 	wa = (workerArgs*) args;
 	socket = wa->socket;
 	ourserver = wa->server;
+    
+    //set up client struct
     clientname = wa->clientname;
     client.clientSocket = socket;
     client.address = clientname;
     
+    free(wa);
+
+    client.tolog = malloc(sizeof(logentry));
+
+    //add client to list
     pthread_mutex_lock(&lock);
     list_append(ourserver->userlist, &client);
     pthread_mutex_unlock(&lock);
 
 	pthread_detach(pthread_self());
 
+    //actually get messages
 	parse_message(socket, ourserver);
 	
 	pthread_mutex_destroy(&(client.c_lock));
