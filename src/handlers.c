@@ -235,6 +235,24 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
     char *target_nick = params[1];
     char logerror[MAXMSG];
     
+    //check that sender is registered
+    if(!(strlen(user->nick) && strlen(user->user))){
+        constr_reply(ERR_NOTREGISTERED, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(senderSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(senderSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        return 0;
+    }
+    
     //get pointer to recipient
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     seek_arg->field = NICK;
@@ -319,6 +337,11 @@ int chirc_handle_NOTICE(chirc_server *server,  //current server
     pthread_mutex_unlock(&lock);
     free(seek_arg);
     
+    //check that sender is registered; if not, do nothing
+    if(!(strlen(user->nick) && strlen(user->user))){
+        return 0;
+    }
+    
     //do nothing if recipient does not exist
     
     if (recippt)
@@ -371,6 +394,26 @@ int chirc_handle_PING(chirc_server *server, //current server
     
     free(servername);
     
+    //check that sender is registered
+    if(!(strlen(user->nick) && strlen(user->user))){
+        constr_reply(ERR_NOTREGISTERED, user, PONGback, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, PONGback, strlen(PONGback), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            free(user->address);
+            free(user);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        return 0;
+    }
+    
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, PONGback, strlen(PONGback), 0) == -1)
     {
@@ -383,6 +426,8 @@ int chirc_handle_PING(chirc_server *server, //current server
         pthread_mutex_lock(&lock);
         list_delete(server->userlist, user);
         pthread_mutex_unlock(&lock);
+        free(user->address);
+        free(user);
         pthread_exit(NULL);
     }
     pthread_mutex_unlock(&(user->c_lock));
@@ -399,6 +444,24 @@ int chirc_handle_MOTD(chirc_server *server,     //current server
     int clientSocket = user->clientSocket;
     
     FILE *fp;
+    
+    //check that sender is registered
+    if(!(strlen(user->nick) && strlen(user->user))){
+        constr_reply(ERR_NOTREGISTERED, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        return 0;
+    }
     
     //error message for no MOTD
     if((fp = fopen("motd.txt", "r")) == NULL)
@@ -488,6 +551,24 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
     person *whoispt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
     
+    //check that sender is registered
+    if(!(strlen(user->nick) && strlen(user->user))){
+        constr_reply(ERR_NOTREGISTERED, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        return 0;
+    }
+    
     //no such person
     if (!whoispt) {
         constr_reply(ERR_NOSUCHNICK, user, reply, server, target_nick);
@@ -569,6 +650,24 @@ int chirc_handle_LUSERS(chirc_server *server,   //current server
     unsigned int numchannels = list_size(server->chanlist);
     unsigned int known = server->numregistered;
     pthread_mutex_unlock(&lock);
+    
+    //check that sender is registered
+    if(!(strlen(user->nick) && strlen(user->user))){
+        constr_reply(ERR_NOTREGISTERED, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        return 0;
+    }
     
     //RPL_LUSERCLIENT
     sprintf(stats, "%u", known);

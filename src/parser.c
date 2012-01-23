@@ -69,6 +69,8 @@ void parse_message(int clientSocket, chirc_server *server)
             pthread_mutex_lock(&lock);
             list_delete(server->userlist, clientpt);
             pthread_mutex_unlock(&lock);
+            free(clientpt->address);
+            free(clientpt);
             close(clientSocket);
             pthread_exit(NULL);
         }
@@ -79,6 +81,8 @@ void parse_message(int clientSocket, chirc_server *server)
             list_delete(server->userlist, clientpt);
             pthread_mutex_unlock(&lock);
             close(clientSocket);
+            free(clientpt->address);
+            free(clientpt);
             pthread_exit(NULL);
         }
         buf[nbytes] = '\0';

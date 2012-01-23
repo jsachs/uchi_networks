@@ -30,7 +30,7 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params);
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra) {
-    int replcode = atoi(code);
+    int replcode = strtol(code, NULL, 10);
     char replmsg[MAXMSG];
     char *servname = server->servername;
     char *version = server->version;
@@ -143,6 +143,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, "%s :Nickname is already in use", extra);
             //pthread_mutex_unlock(&(client->c_lock));
             break;
+        case 451:
+            strcpy(replmsg, ":You have no registered");
+            break;
         case 462:
             //pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, ":Unauthorized command (already registered)");
@@ -163,16 +166,11 @@ void do_registration(person *client, chirc_server *server){
     int i;
     int clientSocket = client->clientSocket;
     char reply[MAXMSG];
-    char *replies[9] = {RPL_WELCOME,
+    char *replies[4] = {RPL_WELCOME,
                         RPL_YOURHOST,
                         RPL_CREATED,
                         RPL_MYINFO,
-                        /*
-                        RPL_LUSERCLIENT,
-                        RPL_LUSEROP,
-                        RPL_LUSERUNKNOWN,
-                        RPL_LUSERCHANNELS,
-                        RPL_LUSERME*/};
+    };
     pthread_mutex_lock(&lock);
     (server->numregistered)++;
     pthread_mutex_unlock(&lock);
@@ -185,6 +183,11 @@ void do_registration(person *client, chirc_server *server){
         {
             perror("Socket send() failed");
             close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, client);
+            pthread_mutex_unlock(&lock);
+            free(client->address);
+            free(client);
             pthread_exit(NULL);
         }
         pthread_mutex_unlock(&(client->c_lock));
@@ -257,5 +260,4 @@ void logprint (logentry *tolog, chirc_server *ourserver, char *message){
         fprintf(logpt, "%s\n", message);
     fclose(logpt);
     return;
-    
 }
