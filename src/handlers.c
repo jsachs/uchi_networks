@@ -70,13 +70,13 @@ int chirc_handle_NICK(chirc_server  *server, // current server
                       chirc_message msg      // message to be sent
                       )
 {
-    char reply[MAXMSG];
-    char *newnick;
+    char reply[MAXMSG];                         // reply to be sent as a response
+    char *newnick;                              // used for registering the new NICK
     int clientSocket = user->clientSocket;
-    newnick = msg[1];
+    newnick = msg[1];                           // takes the new NICK from the user input
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
-    seek_arg->field = NICK;
-    seek_arg->value = newnick;
+    seek_arg->field = NICK;      // used in list seek
+    seek_arg->value = newnick;   // used in list seek
     
     pthread_mutex_lock(&lock);
     person *clientpt = (person *)list_seek(server->userlist, seek_arg);
@@ -87,7 +87,7 @@ int chirc_handle_NICK(chirc_server  *server, // current server
         constr_reply(ERR_NICKNAMEINUSE, user, reply, server, newnick);
         
         pthread_mutex_lock(&(user->c_lock));
-        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)  // if there is an error, disconnect the client and delete them from the userlist
         {
             perror("Socket send() failed");
             pthread_mutex_lock(&lock);
@@ -103,14 +103,14 @@ int chirc_handle_NICK(chirc_server  *server, // current server
             pthread_mutex_lock(&lock);
             strcpy(user->nick, newnick);
             pthread_mutex_unlock(&lock);
-            // deal with a change in nick
+            // deal with a change in nick later
         }
         else{
             pthread_mutex_lock(&lock);
             strcpy(user->nick, newnick);
             pthread_mutex_unlock(&lock);
             if (strlen(user->user))
-                do_registration(user, server);
+                do_registration(user, server); // registers the client if they have added a nick and username
         }
     }
     return 0;
@@ -126,7 +126,7 @@ int chirc_handle_USER(chirc_server  *server, // current server
     char *username = msg[1];
     char *fullname = msg[4];
     
-    memmove(fullname, fullname+1, strlen(fullname));
+    memmove(fullname, fullname+1, strlen(fullname));  // strips the leading colon off of the fullname
     
     if ( strlen(user->user) && strlen(user->nick) ) {
         constr_reply(ERR_ALREADYREGISTRED, user, reply, server, NULL);
@@ -149,7 +149,7 @@ int chirc_handle_USER(chirc_server  *server, // current server
         strcpy(user->fullname, fullname);
         pthread_mutex_unlock(&lock);
         if(strlen(user->nick))
-            do_registration(user, server);
+            do_registration(user, server); // registers the client if they have added a nick and username
     }
     return 0;
 }
@@ -354,7 +354,7 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params)
     int clientSocket = user->clientSocket;
     
     FILE *fp;
-    if((fp = fopen("motd.txt", "r")) == NULL)
+    if((fp = fopen("motd.txt", "r")) == NULL)  // what to do if no MOTD is found
     {
         constr_reply(ERR_NOMOTD, user, reply, server, NULL);
         
@@ -387,7 +387,7 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params)
         pthread_mutex_unlock(&(user->c_lock));
         
         
-        while(fgets(motd,sizeof(motd),fp) != NULL)
+        while(fgets(motd,sizeof(motd),fp) != NULL) // loops through lines of MOTD, constructing a RPL_MOTD for each line
         {
             if (motd[strlen(motd) - 1] == '\n') {
             motd[strlen(motd) - 1] = '\0';
@@ -438,7 +438,7 @@ int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params)
     pthread_mutex_lock(&lock);
     person *whoispt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
-    if (!whoispt) {
+    if (!whoispt) {  // the case where no nick is found
         constr_reply(ERR_NOSUCHNICK, user, reply, server, target_nick);
         
         pthread_mutex_lock(&(user->c_lock));
@@ -460,7 +460,7 @@ int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params)
         );
         pthread_mutex_unlock(&(user->c_lock));    
         
-        constr_reply(RPL_WHOISUSER, user, reply, server, wiuser);
+        constr_reply(RPL_WHOISUSER, user, reply, server, wiuser); // passes the whois lookup for user to constr_reply
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
@@ -474,7 +474,7 @@ int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params)
         
         snprintf(wiserver, MAXMSG - 2, "%s %s :%s", params[1],
                                                     whoispt->address,
-                                                    "<server info>"
+                                                    "<server info>"   // placeholder
         );
         pthread_mutex_unlock(&(user->c_lock));    
         
