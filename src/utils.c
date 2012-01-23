@@ -46,113 +46,116 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
     char *msg_clnt = client->address;
     switch (replcode){
         case 1:  // 001
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":Welcome to the Internet Relay Network %s!%s@%s", nick, user, msg_clnt);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 2:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":Your host is %s running version %s", servname, version);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 3:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":This server was created %s", server->birthday);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 4:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s %s ao mtov", servname, version); 
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 251:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":There are %s users and 0 services on 1 servers", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 252:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :operator(s) online", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 253:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :unknown connection(s)", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //sprintf(replmsg, "0 :unknown connection(s)");
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 254:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :channels formed", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //sprintf(replmsg, "0 :channels formed");
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 255:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":I have %s clients and 1 servers", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //sprintf(replmsg, ":I have 0 clients and 1 servers");
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 311:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 312:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 318: // RPL_ENDWHOIS
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :End of WHOIS list", nick);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 375:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":- %s Message of the day - ", servname);
-            pthread_mutex_unlock(&(client->c_lock));
+           // pthread_mutex_unlock(&(client->c_lock));
             break;
         case 372:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":- %s", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 376:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, ":- End of MOTD command");
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 401:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :No such nick/channel", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 421:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :Unknown command", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 422:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, ":MOTD File is missing");
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 433:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :Nickname is already in use", extra);
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 462:
-            pthread_mutex_lock(&(client->c_lock));
+            //pthread_mutex_lock(&(client->c_lock));
             strcpy(replmsg, ":Unauthorized command (already registered)");
-            pthread_mutex_unlock(&(client->c_lock));
+            //pthread_mutex_unlock(&(client->c_lock));
             break;
         
         default:
             break;
     }
-    pthread_mutex_lock(&(client->c_lock));
+    //pthread_mutex_lock(&(client->c_lock));
     snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, nick, replmsg);
     strcat(reply, "\r\n");
-    pthread_mutex_unlock(&(client->c_lock));
+    //pthread_mutex_unlock(&(client->c_lock));
     return;
 }
 

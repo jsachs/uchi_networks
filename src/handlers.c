@@ -505,18 +505,18 @@ int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params)
 
 int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params){
     char reply[MAXMSG];
-    char stats[2];
+    char stats[5];
     int clientSocket = user->clientSocket;
     unsigned int unknown;
     char logerror[MAXMSG];
     
     //check number of known connections
     pthread_mutex_lock(&lock);
-    //unsigned int userme = list_size(server->userlist);
-    //unsigned int numchannels = list_size(server->chanlist);
-    unsigned int known = 2;
-    unsigned int userme = 2;
-    unsigned int numchannels = 0;
+    unsigned int userme = list_size(server->userlist);
+    //unsigned int userme = 50;
+    unsigned int numchannels = list_size(server->chanlist);
+    unsigned int known = server->numregistered;
+    //unsigned int numchannels = 0;
     /*
     list_iterator_start(server->userlist); //should error-check?
     while (list_iterator_hasnext(server->userlist)){
@@ -571,8 +571,12 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     }
     pthread_mutex_unlock(&(user->c_lock));
     
-    unknown = userme - known;
-    sprintf(stats, "%u", unknown);
+    if (userme >= known){
+        unknown = userme - known;
+        sprintf(stats, "%u", unknown);
+    }
+    else
+        sprintf(stats, "err");
     
     constr_reply(RPL_LUSERUNKNOWN, user, reply, server, stats);
     

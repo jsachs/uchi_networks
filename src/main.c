@@ -47,6 +47,7 @@ int main(int argc, char *argv[])
     ourserver = malloc(sizeof(chirc_server));
     ourserver->userlist = &userlist;
     ourserver->chanlist = &chanlist;
+    ourserver->numregistered = 0;
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;
