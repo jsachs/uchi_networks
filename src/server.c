@@ -43,10 +43,12 @@ void *service_single_client(void *args) {
     client.fullname[0] = '\0';
     pthread_mutex_init(&(client.c_lock), NULL);
     
-    
+    //unpack arguments
 	wa = (workerArgs*) args;
 	socket = wa->socket;
 	ourserver = wa->server;
+    
+    //set up client struct
     clientname = wa->clientname;
     client.clientSocket = socket;
     client.address = clientname;
@@ -55,13 +57,14 @@ void *service_single_client(void *args) {
 
     client.tolog = malloc(sizeof(logentry));
 
-    
+    //add client to list
     pthread_mutex_lock(&lock);
     list_append(ourserver->userlist, &client);
     pthread_mutex_unlock(&lock);
 
 	pthread_detach(pthread_self());
 
+    //actually get messages
 	parse_message(socket, ourserver);
 	
 	pthread_mutex_destroy(&(client.c_lock));
