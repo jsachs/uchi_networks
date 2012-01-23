@@ -143,9 +143,9 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
     int paramnum = 0;
     char reply[MAXMSG];
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
-    for(i = 0; i < MAXPARAMS; i++){
-        memset(params[i], '\0', MAXMSG);
-    }
+    //for(i = 0; i < MAXPARAMS; i++){
+      //  memset(params[i], '\0', MAXMSG);
+    //}
     
     //may want to modify this to get by pthread id, not fd
     seek_arg->field = FD;

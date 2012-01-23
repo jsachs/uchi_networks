@@ -513,18 +513,8 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     //check number of known connections
     pthread_mutex_lock(&lock);
     unsigned int userme = list_size(server->userlist);
-    //unsigned int userme = 50;
     unsigned int numchannels = list_size(server->chanlist);
     unsigned int known = server->numregistered;
-    //unsigned int numchannels = 0;
-    /*
-    list_iterator_start(server->userlist); //should error-check?
-    while (list_iterator_hasnext(server->userlist)){
-        someperson = (person *)list_iterator_next(server->userlist);
-        if(strlen(someperson->nick) && strlen(someperson->user))
-            known++;
-    }
-    list_iterator_stop(server->userlist);*/
     pthread_mutex_unlock(&lock);
 
     sprintf(stats, "%u", known);
