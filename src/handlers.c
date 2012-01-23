@@ -233,7 +233,7 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
     else
     {
         pthread_mutex_lock(&(user->c_lock));
-        snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
+        snprintf(priv_msg, (MAXMSG-1), ":%s!%s@%s %s %s %s", user->nick,
                                                              user->user,
                                                              user->address,
                                                              params[0],
