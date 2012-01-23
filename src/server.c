@@ -34,9 +34,8 @@ void parse_message(int clientSocket, chirc_server *server);
 void *service_single_client(void *args) {
 	
 	workerArgs *wa;
-	int socket, nbytes, i;
+	int socket;
 	chirc_server *ourserver;
-	char buffer[100];
     char *clientname;
     person client;
     client.nick[0] = '\0';

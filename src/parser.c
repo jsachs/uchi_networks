@@ -31,6 +31,8 @@ void parse(char *msg, int clientSocket, chirc_server *server);
 void constr_reply(char code[4], person *nick, char *param);
 void handle_chirc_message(chirc_server *server, person *user, chirc_message params);
 
+void logprint (logentry *tolog, chirc_server *ourserver, char *message);
+
 //parse incoming data into messages, to deal with as needed
 void parse_message(int clientSocket, chirc_server *server)
 {
@@ -55,21 +57,14 @@ void parse_message(int clientSocket, chirc_server *server)
         seek_arg->field = FD;
         seek_arg->fd = clientSocket;
         
-        pthread_mutex_lock(&lock);
-        person *clientpt = (person *)list_seek(server->userlist, seek_arg);
-        pthread_mutex_unlock(&lock);
-        
-        //pthread_mutex_lock(&(clientpt->c_lock));
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) == -1) {
             pthread_mutex_lock(&loglock);
             sprintf(logerror, "recv from socket %d failed with errno %d\n", clientSocket, errno);
             logprint(NULL, server, logerror);
             pthread_mutex_unlock(&loglock);
-            //perror("ERROR: recv failure");
             close(clientSocket);
             pthread_exit(NULL);
         }
-        //pthread_mutex_unlock(&(clientpt->c_lock));
         
         if(nbytes == 0){
             printf("Connection closed by client\n");
@@ -137,11 +132,9 @@ void parse_message(int clientSocket, chirc_server *server)
 
 void parse(char *msg, int clientSocket, chirc_server *server) {
     chirc_message params; // params[0] is command
-    int i;
     int counter = 0;
     int paramcounter = 0;
     int paramnum = 0;
-    char reply[MAXMSG];
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     //for(i = 0; i < MAXPARAMS; i++){
       //  memset(params[i], '\0', MAXMSG);

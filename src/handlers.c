@@ -248,7 +248,6 @@ int chirc_handle_PRIVMSG(chirc_server *server, person *user, chirc_message param
         pthread_mutex_lock(&loglock);
         if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
         {
-            //perror("Socket send() failed");
             pthread_mutex_lock(&loglock);
             sprintf(logerror, "send to user %s from PRIVMSG failed with errno %d\n", recippt->nick, errno);
             logprint(NULL, server, logerror);
@@ -296,7 +295,6 @@ int chirc_handle_NOTICE(chirc_server *server, person *user, chirc_message params
     
         if(send(recippt->clientSocket, notice, strlen(notice), 0) == -1)
         {
-            //perror("Socket send() failed");
             pthread_mutex_lock(&loglock);
             sprintf(logerror, "send to %s from NOTICE failed with errno %d\n", recippt->nick, errno);
             logprint(NULL, server, logerror);
@@ -330,7 +328,6 @@ int chirc_handle_PING(chirc_server *server, person *user, chirc_message params){
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, PONGback, strlen(PONGback), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to user %s from PING failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
@@ -525,7 +522,6 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to %s from LUSERS failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
@@ -547,7 +543,6 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to user %s from LUSERS failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
@@ -573,7 +568,6 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to user %s from LUSERS failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
@@ -593,7 +587,6 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to user %s from LUSERS failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
