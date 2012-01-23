@@ -27,8 +27,9 @@
 #define HOSTNAMELEN 30
 #define NLOOPS 1000000
 
-
+//lock for server struct
 pthread_mutex_t lock;
+//lock for log
 pthread_mutex_t loglock;
 
 
@@ -41,19 +42,16 @@ chirc_server *ourserver;
 
 int main(int argc, char *argv[])
 {
-    
-    list_init(& userlist);
-	list_init(& chanlist);
-    ourserver = malloc(sizeof(chirc_server));
-    ourserver->userlist = &userlist;
-    ourserver->chanlist = &chanlist;
-    ourserver->numregistered = 0;
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;
     serverArgs *sa;
     time_t birthday = time(NULL);
     
+    
+    //initialize lists
+    list_init(& userlist);
+	list_init(& chanlist);
 	if(list_attributes_seeker(&userlist, fun_seek) == -1){
 		perror("list fail");
 		exit(-1);
@@ -81,6 +79,10 @@ int main(int argc, char *argv[])
 	}
     
     /*initialize chirc_server struct*/
+    ourserver = malloc(sizeof(chirc_server));
+    ourserver->userlist = &userlist;
+    ourserver->chanlist = &chanlist;
+    ourserver->numregistered = 0;
     ourserver->userlist = &userlist;
     ourserver->chanlist = &chanlist;
     ourserver->port = port;
@@ -89,7 +91,7 @@ int main(int argc, char *argv[])
     ourserver->birthday = ctime(&birthday);
     ourserver->birthday[strlen(ourserver->birthday) - 1] = '\0';
 
-    
+    //set up for pthreads and mutexes
 	pthread_t server_thread;
     
 	sigset_t new;
@@ -107,21 +109,24 @@ int main(int argc, char *argv[])
     sa = malloc(sizeof(serverArgs));
     sa->server = ourserver;
     
+    //create server thread
 	if (pthread_create(&server_thread, NULL, accept_clients, sa) < 0)
 	{
 		perror("Could not create server thread");
 		exit(-1);
 	}
     
+    //cleanup
 	pthread_join(server_thread, NULL);
-    
 	pthread_mutex_destroy(&lock);
     pthread_mutex_destroy(&loglock);
 	pthread_exit(NULL);
 }
 
+//listens on port, gets some server and client info
 void *accept_clients(void *args)
 {	
+    //unpack argument
     serverArgs *sa;
     chirc_server *ourserver;
      
@@ -140,29 +145,31 @@ void *accept_clients(void *args)
 	socklen_t sinSize = sizeof(struct sockaddr_storage);
 	workerArgs *wa;
 	int yes = 1;
-	
 	char hostname[HOSTNAMELEN];
     
-    
+    //set hints
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
-
-	pthread_mutex_lock(&lock);
+    
+    
 	if (getaddrinfo(NULL, port, &hints, &res) != 0)
 	{
 		perror("getaddrinfo() failed");
 		pthread_exit(NULL);
 	}
-    pthread_mutex_unlock(&lock);
     
+    //get server name
+    //don't really need mutex since there aren't other threads going, but it is accessing a shared data structure
     pthread_mutex_lock(&lock);
     gethostname(servname, MAXMSG);
     ourserver->servername = malloc(strlen(servname));
     strcpy(ourserver->servername, servname);
     pthread_mutex_unlock(&lock);
     
+    
+    //find a working socket
 	for(p = res;p != NULL; p = p->ai_next) 
 	{
 		if ((serverSocket = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
@@ -204,6 +211,7 @@ void *accept_clients(void *args)
 		pthread_exit(NULL);
 	}
     
+    //loop to accept clients and dispatch them to worker thread
 	while (1)
 	{
 		if ((clientSocket = accept(serverSocket, (struct sockaddr *) &clientAddr, &sinSize)) == -1) 
@@ -212,7 +220,7 @@ void *accept_clients(void *args)
 			continue;
 		}
 		
-		/* determine name of client */
+		// determine name of client
     	if (getnameinfo((struct sockaddr *) &clientAddr, sizeof(struct sockaddr), hostname, HOSTNAMELEN, NULL, 0, 0) != 0)
     	{
         	perror("getnameinfo failed");
@@ -221,12 +229,14 @@ void *accept_clients(void *args)
         	pthread_exit(NULL);
     	}
         
+        //pack arguments to worker thread
 		wa = malloc(sizeof(workerArgs));
 		wa->server = ourserver;
         wa->clientname = malloc(strlen(hostname) + 1);;
         strcpy(wa->clientname, hostname);
 		wa->socket = clientSocket;
         
+        //create worker thread
 		if (pthread_create(&worker_thread, NULL, service_single_client, wa) != 0) 
 		{
 			perror("Could not create a worker thread");

@@ -55,11 +55,13 @@ typedef struct{
 } el_indicator;
 
 
+//pass to server threads
 typedef struct
 {
 	chirc_server *server;
 } serverArgs;
 
+//pass to thread to handle each client
 typedef struct
 {
 	chirc_server *server;

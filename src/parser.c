@@ -59,20 +59,23 @@ void parse_message(int clientSocket, chirc_server *server)
         person *clientpt = (person *)list_seek(server->userlist, seek_arg);
         pthread_mutex_unlock(&lock);
         
-        //pthread_mutex_lock(&(clientpt->c_lock));
         if ((nbytes = recv(clientSocket, buf, MAXMSG, 0)) == -1) {
             pthread_mutex_lock(&loglock);
             sprintf(logerror, "recv from socket %d failed with errno %d\n", clientSocket, errno);
             logprint(NULL, server, logerror);
             pthread_mutex_unlock(&loglock);
-            //perror("ERROR: recv failure");
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, clientpt);
+            pthread_mutex_unlock(&lock);
             close(clientSocket);
             pthread_exit(NULL);
         }
-        //pthread_mutex_unlock(&(clientpt->c_lock));
         
         if(nbytes == 0){
             printf("Connection closed by client\n");
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, clientpt);
+            pthread_mutex_unlock(&lock);
             close(clientSocket);
             pthread_exit(NULL);
         }
@@ -143,23 +146,19 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
     int paramnum = 0;
     char reply[MAXMSG];
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
-    //for(i = 0; i < MAXPARAMS; i++){
-      //  memset(params[i], '\0', MAXMSG);
-    //}
     
-    //may want to modify this to get by pthread id, not fd
     seek_arg->field = FD;
     seek_arg->fd = clientSocket;
     
     pthread_mutex_lock(&lock);
     person *clientpt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
-    // process to break a message into its component commands/parameters
-    // potentially clean this up to ultilize strtok() at some point
-    
+
+    //note in log structure what message is and where it came from
     strcpy(clientpt->tolog->msgin, msg);
     strcpy(clientpt->tolog->userin, clientpt->nick);
     
+    // process to break a message into its component commands/parameters
     while(msg[counter] != '\0'){
         if (msg[counter] == ' '){
             params[paramnum][paramcounter] = '\0';
