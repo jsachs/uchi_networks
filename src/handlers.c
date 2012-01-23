@@ -72,15 +72,15 @@ int chirc_handle_NICK(chirc_server  *server, // current server
                       chirc_message msg      // message received
                       )
 {
-    char reply[MAXMSG];
-    char *newnick;
+    char reply[MAXMSG];                         // reply to be sent as a response
+    char *newnick;                              // used for registering the new NICK
     int clientSocket = user->clientSocket;
     newnick = msg[1];
     
     //check list to see if someone already has that nickname
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
-    seek_arg->field = NICK;
-    seek_arg->value = newnick;
+    seek_arg->field = NICK;      // used in list seek
+    seek_arg->value = newnick;   // used in list seek
     
     pthread_mutex_lock(&lock);
     person *clientpt = (person *)list_seek(server->userlist, seek_arg);
@@ -92,7 +92,7 @@ int chirc_handle_NICK(chirc_server  *server, // current server
         constr_reply(ERR_NICKNAMEINUSE, user, reply, server, newnick);
         
         pthread_mutex_lock(&(user->c_lock));
-        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)  // if there is an error, disconnect the client and delete them from the userlist
         {
             perror("Socket send() failed");
             pthread_mutex_lock(&lock);
@@ -128,8 +128,8 @@ int chirc_handle_NICK(chirc_server  *server, // current server
             pthread_mutex_lock(&lock);
             strcpy(user->nick, newnick);
             pthread_mutex_unlock(&lock);
-            if (strlen(user->user))     //user already sent, so register
-                do_registration(user, server);
+            if (strlen(user->user))
+                do_registration(user, server); // registers the client if they have added a nick and username
         }
     }
     return 0;
@@ -145,9 +145,9 @@ int chirc_handle_USER(chirc_server  *server, // current server
     char *username = msg[1];
     char *fullname = msg[4];
     
-    //remove colon at front of username
+    //remove colon at front of fullname
     memmove(fullname, fullname+1, strlen(fullname));
-    
+
     if ( strlen(user->user) && strlen(user->nick) ) {   //already registered
         constr_reply(ERR_ALREADYREGISTRED, user, reply, server, NULL);
         
@@ -168,8 +168,8 @@ int chirc_handle_USER(chirc_server  *server, // current server
         strcpy(user->user, username);
         strcpy(user->fullname, fullname);
         pthread_mutex_unlock(&lock);
-        if(strlen(user->nick))  //nick already sent, so register
-            do_registration(user, server);
+        if(strlen(user->nick))
+            do_registration(user, server); // registers the client if they have added a nick and username
     }
     return 0;
 }
@@ -266,7 +266,7 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
     //relay message
     else{
         pthread_mutex_lock(&(user->c_lock));
-        snprintf(priv_msg, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
+        snprintf(priv_msg, (MAXMSG-1), ":%s!%s@%s %s %s %s", user->nick,
                                                              user->user,
                                                              user->address,
                                                              params[0],
@@ -283,7 +283,6 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
         pthread_mutex_lock(&loglock);
         if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
         {
-            //perror("Socket send() failed");
             pthread_mutex_lock(&loglock);
             sprintf(logerror, "send to user %s from PRIVMSG failed with errno %d\n", recippt->nick, errno);
             logprint(NULL, server, logerror);
@@ -337,7 +336,6 @@ int chirc_handle_NOTICE(chirc_server *server,  //current server
     
         if(send(recippt->clientSocket, notice, strlen(notice), 0) == -1)
         {
-            //perror("Socket send() failed");
             pthread_mutex_lock(&loglock);
             sprintf(logerror, "send to %s from NOTICE failed with errno %d\n", recippt->nick, errno);
             logprint(NULL, server, logerror);
@@ -376,7 +374,6 @@ int chirc_handle_PING(chirc_server *server, //current server
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, PONGback, strlen(PONGback), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to user %s from PING failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
@@ -436,8 +433,7 @@ int chirc_handle_MOTD(chirc_server *server,     //current server
         }
         pthread_mutex_unlock(&(user->c_lock));
         
-        //loop: get line, construct reply, send reply, repeate
-        while(fgets(motd,sizeof(motd),fp) != NULL)
+        while(fgets(motd,sizeof(motd),fp) != NULL) // loops through lines of MOTD, constructing a RPL_MOTD for each line
         {
             if (motd[strlen(motd) - 1] == '\n') {
             motd[strlen(motd) - 1] = '\0';
@@ -491,6 +487,7 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
     pthread_mutex_lock(&lock);
     person *whoispt = (person *)list_seek(server->userlist, seek_arg);
     pthread_mutex_unlock(&lock);
+<<<<<<< HEAD
     
     //no such person
     if (!whoispt) {
@@ -515,7 +512,7 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
                                                        whoispt->fullname
         );  
         
-        constr_reply(RPL_WHOISUSER, user, reply, server, wiuser);
+        constr_reply(RPL_WHOISUSER, user, reply, server, wiuser); // passes the whois lookup for user to constr_reply
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
@@ -528,8 +525,9 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
         //WHOISSERVER
         snprintf(wiserver, MAXMSG - 2, "%s %s :%s", params[1],
                                                     whoispt->address,
-                                                    "<server info>"
-        );  
+                                                    "<server info>"   // placeholder
+        );
+        pthread_mutex_unlock(&(user->c_lock));    
         
         constr_reply(RPL_WHOISSERVER, user, reply, server, wiserver);
         pthread_mutex_lock(&(user->c_lock));
@@ -579,7 +577,6 @@ int chirc_handle_LUSERS(chirc_server *server,   //current server
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to %s from LUSERS failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
@@ -602,7 +599,6 @@ int chirc_handle_LUSERS(chirc_server *server,   //current server
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to user %s from LUSERS failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
@@ -630,7 +626,6 @@ int chirc_handle_LUSERS(chirc_server *server,   //current server
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to user %s from LUSERS failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);
@@ -651,7 +646,6 @@ int chirc_handle_LUSERS(chirc_server *server,   //current server
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
-        //perror("Socket send() failed");
         pthread_mutex_lock(&loglock);
         sprintf(logerror, "send to user %s from LUSERS failed with errno %d\n", user->nick, errno);
         logprint(NULL, server, logerror);

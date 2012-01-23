@@ -31,6 +31,8 @@ void parse(char *msg, int clientSocket, chirc_server *server);
 void constr_reply(char code[4], person *nick, char *param);
 void handle_chirc_message(chirc_server *server, person *user, chirc_message params);
 
+void logprint (logentry *tolog, chirc_server *ourserver, char *message);
+
 //parse incoming data into messages, to deal with as needed
 void parse_message(int clientSocket, chirc_server *server)
 {
@@ -140,11 +142,9 @@ void parse_message(int clientSocket, chirc_server *server)
 
 void parse(char *msg, int clientSocket, chirc_server *server) {
     chirc_message params; // params[0] is command
-    int i;
     int counter = 0;
     int paramcounter = 0;
     int paramnum = 0;
-    char reply[MAXMSG];
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     
     seek_arg->field = FD;

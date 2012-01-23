@@ -25,7 +25,6 @@
 #include "ircstructs.h"
 
 #define HOSTNAMELEN 30
-#define NLOOPS 1000000
 
 //lock for server struct
 pthread_mutex_t lock;
@@ -42,6 +41,9 @@ chirc_server *ourserver;
 
 int main(int argc, char *argv[])
 {
+    /* list structs used for storing users and channels in the server struct */
+    list_init(& userlist);
+	list_init(& chanlist);
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;
@@ -91,8 +93,9 @@ int main(int argc, char *argv[])
     ourserver->birthday = ctime(&birthday);
     ourserver->birthday[strlen(ourserver->birthday) - 1] = '\0';
 
-    //set up for pthreads and mutexes
-	pthread_t server_thread;
+    /* stores several parameters within the server struct */
+    
+	pthread_t server_thread; // the main and only server thread
     
 	sigset_t new;
 	sigemptyset (&new);
@@ -236,7 +239,7 @@ void *accept_clients(void *args)
         strcpy(wa->clientname, hostname);
 		wa->socket = clientSocket;
         
-        //create worker thread
+        /* this passes control to a thread that handles a single client */
 		if (pthread_create(&worker_thread, NULL, service_single_client, wa) != 0) 
 		{
 			perror("Could not create a worker thread");
