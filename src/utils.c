@@ -45,117 +45,72 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
     char *user = client->user;
     char *msg_clnt = client->address;
     switch (replcode){
-        case 1:  // 001
-            //pthread_mutex_lock(&(client->c_lock));
+        case 1:   // RPL_WELCOME
             sprintf(replmsg, ":Welcome to the Internet Relay Network %s!%s@%s", nick, user, msg_clnt);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 2:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 2:   // RPL_YOURHOST
             sprintf(replmsg, ":Your host is %s running version %s", servname, version);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 3:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 3:   // RPL_CREATED
             sprintf(replmsg, ":This server was created %s", server->birthday);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 4:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 4:   // RPL_MYINFO
             sprintf(replmsg, "%s %s ao mtov", servname, version); 
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 251:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 251: // RPL_LUSERCLIENT
             sprintf(replmsg, ":There are %s users and 0 services on 1 servers", extra);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 252:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 252: // RPL_LUSEROP
             sprintf(replmsg, "%s :operator(s) online", extra);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 253:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 253: // RPL_LUSERUNKNOWN
             sprintf(replmsg, "%s :unknown connection(s)", extra);
-            //sprintf(replmsg, "0 :unknown connection(s)");
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 254:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 254: // RPL_LUSERCHANNELS
             sprintf(replmsg, "%s :channels formed", extra);
-            //sprintf(replmsg, "0 :channels formed");
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 255:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 255: // RPL_LUSERNAME
             sprintf(replmsg, ":I have %s clients and 1 servers", extra);
-            //sprintf(replmsg, ":I have 0 clients and 1 servers");
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 311:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 311: // RPL_WHOISUSER
             sprintf(replmsg, "%s", extra);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 312:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 312: // RPL_WHOISSERVER
             sprintf(replmsg, "%s", extra);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
         case 318: // RPL_ENDWHOIS
-            //pthread_mutex_lock(&(client->c_lock));
             sprintf(replmsg, "%s :End of WHOIS list", nick);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 375:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 375: // RPL_MOTDSTART
             sprintf(replmsg, ":- %s Message of the day - ", servname);
-           // pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 372:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 372: // RPL_MOTD
             sprintf(replmsg, ":- %s", extra);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 376:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 376: // RPL_ENDOFMOTD
             sprintf(replmsg, ":- End of MOTD command");
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 401:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 401: // ERR_NOSUCHNICK
             sprintf(replmsg, "%s :No such nick/channel", extra);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 421:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 421: // ERR_UNKNOWNCOMMAND
             sprintf(replmsg, "%s :Unknown command", extra);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 422:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 422: // ERR_NOMOTD
             strcpy(replmsg, ":MOTD File is missing");
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 433:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 433: // ERR_NICKNAMEINUSE
             sprintf(replmsg, "%s :Nickname is already in use", extra);
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
-        case 462:
-            //pthread_mutex_lock(&(client->c_lock));
+        case 462: // ERR_ALREADYREGISTERED
             strcpy(replmsg, ":Unauthorized command (already registered)");
-            //pthread_mutex_unlock(&(client->c_lock));
             break;
         
         default:
             break;
     }
-    //pthread_mutex_lock(&(client->c_lock));
     snprintf(reply, MAXMSG - 2, "%s %s %s %s", prefix, code, nick, replmsg);
     strcat(reply, "\r\n");
-    //pthread_mutex_unlock(&(client->c_lock));
     return;
 }
 
@@ -163,16 +118,11 @@ void do_registration(person *client, chirc_server *server){
     int i;
     int clientSocket = client->clientSocket;
     char reply[MAXMSG];
-    char *replies[9] = {RPL_WELCOME,
+    char *replies[4] = {RPL_WELCOME,
                         RPL_YOURHOST,
                         RPL_CREATED,
                         RPL_MYINFO,
-                        /*
-                        RPL_LUSERCLIENT,
-                        RPL_LUSEROP,
-                        RPL_LUSERUNKNOWN,
-                        RPL_LUSERCHANNELS,
-                        RPL_LUSERME*/};
+    };
     pthread_mutex_lock(&lock);
     (server->numregistered)++;
     pthread_mutex_unlock(&lock);
