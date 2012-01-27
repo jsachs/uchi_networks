@@ -69,6 +69,11 @@ typedef struct
 	int socket;
 } workerArgs;
 
+typedef struct {
+    char *topic;
+    list_t *chan_users;
+} channel;
+
 
 
 

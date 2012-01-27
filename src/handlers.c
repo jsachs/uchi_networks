@@ -31,7 +31,7 @@ extern pthread_mutex_t loglock;
 
 //forward declarations of functions in utils
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
-void do_registration(person *client, chirc_server *server);
+void do_(person *client, chirc_server *server);
 void logprint (logentry *tolog, chirc_server *ourserver, char *logerror);
 
 //all the handlers
@@ -45,6 +45,8 @@ int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
+
+int chirc_handle_JOIN(chirc_server *server, person *user, chirc_message params);
 
 void handle_chirc_message(chirc_server *server, person *user, chirc_message params)
 {
@@ -60,9 +62,11 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
     else if (strcmp(command, "WHOIS") == 0)   chirc_handle_WHOIS(server, user, params);
     
     else if (strcmp(command, "PING") == 0)    chirc_handle_PING(server, user, params);
-    else if (strcmp(command, "PONG") == 0) ;    //drop PONG silently
-    else if (strcmp(command, "LUSERS") == 0) chirc_handle_LUSERS(server, user, params);
+    else if (strcmp(command, "PONG") == 0) ;  //drop PONG silently
+    else if (strcmp(command, "LUSERS") == 0)  chirc_handle_LUSERS(server, user, params);
     else if (strcmp(command, "MOTD") == 0)    chirc_handle_MOTD(server, user, params);
+    
+    else if (strcmp(command, "JOIN") == 0)    chirc_handle_JOIN(server, user, params);
     
     else chirc_handle_UNKNOWN(server, user, params);
 }
@@ -775,6 +779,16 @@ int chirc_handle_LUSERS(chirc_server *server,   //current server
     return 0;
 }
     
+
+int chirc_handle_JOIN(chirc_server *server,  //current server
+                         person *user,          //current user
+                         chirc_message params)  //message received
+{
+    return 0:
+}
+
+
+
 
 int chirc_handle_UNKNOWN(chirc_server *server,  //current server
                          person *user,          //current user
