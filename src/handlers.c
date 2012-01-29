@@ -31,7 +31,7 @@ extern pthread_mutex_t loglock;
 
 //forward declarations of functions in utils
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
-void do_(person *client, chirc_server *server);
+void do_registration(person *client, chirc_server *server);
 void logprint (logentry *tolog, chirc_server *ourserver, char *logerror);
 
 //all the handlers
@@ -784,7 +784,7 @@ int chirc_handle_JOIN(chirc_server *server,  //current server
                          person *user,          //current user
                          chirc_message params)  //message received
 {
-    return 0:
+    return 0;
 }
 
 

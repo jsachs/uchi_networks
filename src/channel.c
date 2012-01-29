@@ -29,18 +29,20 @@
 extern pthread_mutex_t lock;
 extern pthread_mutex_t loglock;
 
+void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
+
 void channel_join(person *client, chirc_server *server){
     int i;
     int clientSocket = client->clientSocket;
     char reply[MAXMSG];
-    char *replies[4] = {RPL_TOPIC,
-                        RPL_NAMEREPLY,
+    char *replies[2] = {RPL_NAMREPLY,
+    					RPL_ENDOFNAMES
     };
     pthread_mutex_lock(&lock);
     (server->numregistered)++;
     pthread_mutex_unlock(&lock);
     
-    for (i = 0; i < 4; i++){
+    for (i = 0; i < 2; i++){
         constr_reply(replies[i], client, reply , server, NULL);
         
         pthread_mutex_lock(&(client->c_lock));
@@ -57,7 +59,4 @@ void channel_join(person *client, chirc_server *server){
         }
         pthread_mutex_unlock(&(client->c_lock));
     }
-    
-    chirc_handle_LUSERS(server, client, NULL);
-    chirc_handle_MOTD(server, client, NULL);
 }
