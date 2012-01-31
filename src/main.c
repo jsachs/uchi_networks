@@ -42,8 +42,8 @@ chirc_server *ourserver;
 int main(int argc, char *argv[])
 {
     /* list structs used for storing users and channels in the server struct */
-    list_init(& userlist);
-	list_init(& chanlist);
+    //list_init(& userlist);
+	//list_init(& chanlist);
 	
 	int opt;
 	char *port = "6667", *passwd = NULL;

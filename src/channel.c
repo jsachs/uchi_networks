@@ -93,6 +93,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     strcpy(newuser->nick, client->nick);
     newuser->mode[0] = '+';
     list_append(channelpt->chan_users, newuser);
+    list_append(client->channel_names, cname);
 
     // Send appropriate replies
     // This first reply is send to all channel users

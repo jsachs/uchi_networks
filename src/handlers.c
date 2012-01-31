@@ -35,6 +35,7 @@ void do_registration(person *client, chirc_server *server);
 void logprint (logentry *tolog, chirc_server *ourserver, char *logerror);
 
 void channel_join(person *client, chirc_server *server, char* channel_name);
+void sendtochannel(chirc_server *server, channel *chan, char *msg);
 
 
 //all the handlers
@@ -239,8 +240,9 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
     char priv_msg[MAXMSG];
     char reply[MAXMSG];
     int senderSocket = user->clientSocket;
-    char *target_nick = params[1];
+    char *target_name = params[1];  //may be a nickname or channel name
     char logerror[MAXMSG];
+    chanuser *chansender;
     
     //check that sender is registered
     if(!(strlen(user->nick) && strlen(user->user))){
@@ -260,19 +262,21 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
         return 0;
     }
     
-    //get pointer to recipient
+    //try to get recipient from userlist and chanlist
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     seek_arg->field = NICK;
-    seek_arg->value = target_nick;
+    seek_arg->value = target_name;
     pthread_mutex_lock(&lock);
     person *recippt = (person *)list_seek(server->userlist, seek_arg);
+    seek_arg->field = CHAN;
+    channel *chanpt = (channel *)list_seek(server->chanlist, seek_arg);
     pthread_mutex_unlock(&lock);
     
-    free(seek_arg);
+
     
-    //recipient does not exist
-    if (!recippt) {
-        constr_reply(ERR_NOSUCHNICK, user, reply, server, target_nick);
+    
+    if (!recippt && !chanpt) {
+        constr_reply(ERR_NOSUCHNICK, user, reply, server, target_name);
         
         pthread_mutex_lock(&(user->c_lock));
         if(send(senderSocket, reply, strlen(reply), 0) == -1)
@@ -299,31 +303,66 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                                                              params[2]
         );
         //write reply and nick of recipient to log struct
+        /*
         strcpy(user->tolog->userout, params[1]);
         strcpy(user->tolog->msgout, priv_msg);
+         */
         strcat(priv_msg, "\r\n");
-        pthread_mutex_unlock(&(user->c_lock));    
-        pthread_mutex_lock(&(recippt->c_lock));
-        //ensure that log messages are in order
-        pthread_mutex_lock(&loglock);
-        if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
-        {
-            pthread_mutex_lock(&loglock);
-            sprintf(logerror, "send to user %s from PRIVMSG failed with errno %d\n", recippt->nick, errno);
-            logprint(NULL, server, logerror);
-            pthread_mutex_unlock(&loglock);
+        pthread_mutex_unlock(&(user->c_lock)); 
+        if (recippt != NULL){               //recipient is an individual
+            pthread_mutex_lock(&(recippt->c_lock));
+            //ensure that log messages are in order
+            //pthread_mutex_lock(&loglock);
+            if(send(recippt->clientSocket, priv_msg, strlen(priv_msg), 0) == -1)
+            {
+                pthread_mutex_lock(&loglock);
+                sprintf(logerror, "send to user %s from PRIVMSG failed with errno %d\n", recippt->nick, errno);
+                logprint(NULL, server, logerror);
+                pthread_mutex_unlock(&loglock);
             
-            close(recippt->clientSocket);
-            pthread_mutex_lock(&lock);
-            list_delete(server->userlist, recippt);
-            pthread_mutex_unlock(&lock);
-            pthread_exit(NULL);
-        }
+                close(recippt->clientSocket);
+                pthread_mutex_lock(&lock);
+                list_delete(server->userlist, recippt);
+                pthread_mutex_unlock(&lock);
+                pthread_exit(NULL);
+            }
         //write to log
-        logprint(user->tolog, server, NULL);
-        pthread_mutex_unlock(&loglock);
+        //logprint(user->tolog, server, NULL);
+        //pthread_mutex_unlock(&loglock);
         pthread_mutex_unlock(&(recippt->c_lock));
-    } 
+        }
+        else{       //recipient is a channel
+            //check that user is member of channel
+            seek_arg->field = CHANUSER;
+            seek_arg->value = user->nick;
+            pthread_mutex_lock(&lock);  //probably don't need to lock whole server to just access this channel
+            chansender = (chanuser *)list_seek(chanpt->chan_users, seek_arg);
+            pthread_mutex_unlock(&lock);
+            if (!chansender) {
+                constr_reply(ERR_NOSUCHNICK, user, reply, server, target_name);
+                
+                pthread_mutex_lock(&(user->c_lock));
+                if(send(senderSocket, reply, strlen(reply), 0) == -1)
+                {
+                    perror("Socket send() failed");
+                    close(senderSocket);
+                    pthread_mutex_lock(&lock);
+                    list_delete(server->userlist, user);
+                    pthread_mutex_unlock(&lock);
+                    pthread_exit(NULL);
+                }
+                pthread_mutex_unlock(&(user->c_lock));
+                
+            }
+            else{
+                sendtochannel(server, chanpt, priv_msg);
+            }
+            
+        }
+    }
+        
+    free(seek_arg);
+        
     return 0;
 }
 

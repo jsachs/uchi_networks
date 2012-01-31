@@ -37,6 +37,7 @@ void *service_single_client(void *args) {
 	int socket;
 	chirc_server *ourserver;
     char *clientname;
+    list_t userchans;
     person client;
     client.nick[0] = '\0';
     client.user[0] = '\0';
@@ -49,9 +50,11 @@ void *service_single_client(void *args) {
 	ourserver = wa->server;
     
     //set up client struct
+    list_init(&userchans);
     clientname = wa->clientname;
     client.clientSocket = socket;
     client.address = clientname;
+    client.channel_names = &userchans;
     
     free(wa);
 
