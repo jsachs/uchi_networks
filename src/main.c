@@ -85,8 +85,6 @@ int main(int argc, char *argv[])
     ourserver->userlist = &userlist;
     ourserver->chanlist = &chanlist;
     ourserver->numregistered = 0;
-    ourserver->userlist = &userlist;
-    ourserver->chanlist = &chanlist;
     ourserver->port = port;
     ourserver->pw = passwd;
     ourserver->version = "chirc-0.1";

@@ -91,10 +91,10 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, ":- End of MOTD command");
             break;
         case 353:
-        	sprintf(replmsg, ":hostname 353 nick = #foobar :foobar1 foobar2 foobar3");
+        	sprintf(replmsg, "= #foobar :foobar1 foobar2 foobar3");
         	break;
         case 366:
-        	sprintf(replmsg, ":hostname 366 nick #foobar :End of NAMES list");
+        	sprintf(replmsg, "#foobar :End of NAMES list");
         	break;
         case 401: // ERR_NOSUCHNICK
             sprintf(replmsg, "%s :No such nick/channel", extra);

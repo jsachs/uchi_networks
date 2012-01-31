@@ -70,6 +70,7 @@ typedef struct
 } workerArgs;
 
 typedef struct {
+	char *name;
     char *topic;
     list_t *chan_users;
 } channel;
