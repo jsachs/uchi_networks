@@ -30,6 +30,7 @@ extern pthread_mutex_t lock;
 extern pthread_mutex_t loglock;
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
+void sendtochannel(chirc_server *server, channel *chan, char *msg);
 int fun_seek(const void *el, const void *indicator);
 
 void channel_join(person *client, chirc_server *server, char* channel_name){
@@ -86,7 +87,6 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     free(seek_arg);
     
     if (chanuserpt != NULL) return;
-	
 
     // Finally, add the user to the channel
     chanuser *newuser = malloc(sizeof(chanuser));
@@ -98,6 +98,8 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     // This first reply is send to all channel users
     snprintf(reply, MAXMSG-1, ":%s!%s@%s JOIN %s", client->nick, client->user, client->address, channel_name);
     strcat(reply, "\r\n");
+    sendtochannel(server, channelpt, reply);
+    /*
     pthread_mutex_lock(&(client->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
@@ -109,7 +111,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
         pthread_exit(NULL);
     }
     pthread_mutex_unlock(&(client->c_lock));
-    
+    */
     
     
     for (i = 0; i < 2; i++){

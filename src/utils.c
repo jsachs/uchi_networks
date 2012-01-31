@@ -235,6 +235,38 @@ int fun_seek(const void *el, const void *indicator){
     }
 }
 
+void sendtochannel(chirc_server *server, channel *chan, char *msg){
+    int chanSocket;
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    chanuser *chanmemb;
+    person *user;
+    seek_arg->field = NICK;
+    
+    //need to lock channel too!
+    list_iterator_start(chan->chan_users);
+    while(list_iterator_hasnext(chan->chan_users)){
+        chanmemb = (chanuser *)list_iterator_next(chan->chan_users);
+        seek_arg->value = chanmemb->nick;
+        pthread_mutex_lock(&lock);
+        user = (person *)list_seek(server->userlist, seek_arg);
+        pthread_mutex_unlock(&lock);
+        chanSocket = user->clientSocket;
+        
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(chanSocket, msg, strlen(msg), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(chanSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+    }
+    list_iterator_stop(chan->chan_users);
+}
+
 void logprint (logentry *tolog, chirc_server *ourserver, char *message){
     FILE *logpt = fopen("log.txt", "a");
     if(tolog != NULL)
