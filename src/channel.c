@@ -38,7 +38,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     char *replies[2] = {RPL_NAMREPLY,
     			RPL_ENDOFNAMES
     };
-    snprintf(reply, MAXMSG-1, ":%s!%s@%s JOIN %s", client->nick, client->user, client->address, params[1]);
+    snprintf(reply, MAXMSG-1, ":%s!%s@%s JOIN %s", client->nick, client->user, client->address, channel_name);
     strcat(reply, "\r\n");
     pthread_mutex_lock(&(client->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -46,7 +46,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
         perror("Socket send() failed");
         close(clientSocket);
         pthread_mutex_lock(&lock);
-        list_delete(server->userlist, user);
+        list_delete(server->userlist, client);
         pthread_mutex_unlock(&lock);
         pthread_exit(NULL);
     }
