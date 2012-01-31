@@ -33,7 +33,11 @@ extern pthread_mutex_t loglock;
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
 void do_registration(person *client, chirc_server *server);
 void logprint (logentry *tolog, chirc_server *ourserver, char *logerror);
+<<<<<<< HEAD
 void channel_join(person *client, chirc_server *server, char *channame);
+=======
+void channel_join(person *client, chirc_server *server, char* channel_name);
+>>>>>>> f9960b2ec3279261a9cd044ef262077ab9ae77e0
 
 //all the handlers
 int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
@@ -786,7 +790,6 @@ int chirc_handle_JOIN(chirc_server *server,  //current server
                          chirc_message params)  //message received
 {
     channel_join(user, server, params[1]);
-    
     return 0;
 }
 
