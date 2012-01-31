@@ -8,7 +8,8 @@
 #define USER 		1
 #define FULLNAME 	2
 #define ADDRESS		3
-#define FD			4
+#define FD		4
+#define CHAN            5
 
 #define MAXMSG 512
 #define MAXPARAMS 16
@@ -58,21 +59,28 @@ typedef struct{
 //pass to server threads
 typedef struct
 {
-	chirc_server *server;
+    chirc_server *server;
 } serverArgs;
 
 //pass to thread to handle each client
 typedef struct
 {
-	chirc_server *server;
+    chirc_server *server;
     char *clientname;
-	int socket;
+    int socket;
 } workerArgs;
 
 typedef struct {
-    char *topic;
+    char name[MAXMSG];
+    char topic[MAXMSG];
+    char mode[3];
     list_t *chan_users;
 } channel;
+
+typedef struct {
+    char nick[MAXMSG];
+    char mode[3];
+} chanuser;
 
 
 
