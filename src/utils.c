@@ -171,9 +171,12 @@ int fun_seek(const void *el, const void *indicator){
     int fd;
     person *client = NULL;
     channel *chan  = NULL;
+    chanuser *cuser = NULL;
 
     if (field == 5)
         chan = (channel *)el;
+    else if (field ==  6)
+    	cuser = (chanuser *)el;
     else
 	client = (person *)el;
  
@@ -182,7 +185,7 @@ int fun_seek(const void *el, const void *indicator){
         fd = el_info->fd;
     else
         value = el_info->value;
-    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 4){
+    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 6){
         perror("bad argument to fun_seek");
         return 0;
     }
@@ -216,12 +219,17 @@ int fun_seek(const void *el, const void *indicator){
                 return 1;
             else
                 return 0;
-	case 5:
-	   if (strcmp(chan->name, value) == 0)
-		return 1;
-	   else
-		return 0;
-        default:
+		case 5:
+	  	 	if (strcmp(chan->name, value) == 0)
+				return 1;
+	   		else
+				return 0;
+		case 6:
+			if(strcmp(cuser->nick, value) == 0)
+				return 1;
+			else
+				return 0;
+	    default:
             return 0;
             break;
     }

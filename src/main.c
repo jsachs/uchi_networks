@@ -58,6 +58,10 @@ int main(int argc, char *argv[])
 		perror("list fail");
 		exit(-1);
 	}
+	if(list_attributes_seeker(&chanlist, fun_seek) == -1){
+		perror("list fail");
+		exit(-1);
+	}
     
 	while ((opt = getopt(argc, argv, "p:o:h")) != -1)
 		switch (opt)

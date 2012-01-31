@@ -8,8 +8,9 @@
 #define USER 		1
 #define FULLNAME 	2
 #define ADDRESS		3
-#define FD		4
-#define CHAN            5
+#define FD			4
+#define CHAN        5
+#define CHANUSER	6
 
 #define MAXMSG 512
 #define MAXPARAMS 16
@@ -46,6 +47,7 @@ typedef struct {
 	char* address;
 	pthread_mutex_t c_lock;
     logentry *tolog;
+    list_t *channel_names;
 } person;
 
 //parameter for seeker function
