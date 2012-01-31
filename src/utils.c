@@ -99,6 +99,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 401: // ERR_NOSUCHNICK
             sprintf(replmsg, "%s :No such nick/channel", extra);
             break;
+        case 404:
+            sprintf(replmsg, "%s :Cannot send to channel", extra);
+            break;
         case 421: // ERR_UNKNOWNCOMMAND
             sprintf(replmsg, "%s :Unknown command", extra);
             break;
@@ -235,7 +238,7 @@ int fun_seek(const void *el, const void *indicator){
     }
 }
 
-void sendtochannel(chirc_server *server, channel *chan, char *msg){
+void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender){
     int chanSocket;
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     chanuser *chanmemb;
@@ -243,6 +246,7 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg){
     seek_arg->field = NICK;
     
     //need to lock channel too!
+    pthread_mutex_lock(&(chan->chan_lock));
     list_iterator_start(chan->chan_users);
     while(list_iterator_hasnext(chan->chan_users)){
         chanmemb = (chanuser *)list_iterator_next(chan->chan_users);
@@ -251,20 +255,23 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg){
         user = (person *)list_seek(server->userlist, seek_arg);
         pthread_mutex_unlock(&lock);
         chanSocket = user->clientSocket;
-        
-        pthread_mutex_lock(&(user->c_lock));
-        if(send(chanSocket, msg, strlen(msg), 0) == -1)
-        {
-            perror("Socket send() failed");
-            close(chanSocket);
-            pthread_mutex_lock(&lock);
-            list_delete(server->userlist, user);
-            pthread_mutex_unlock(&lock);
-            pthread_exit(NULL);
+        //if sender argument is given, do not relay message back to sender
+        if(sender == NULL || (strcmp(sender, user->nick) != 0)){
+            pthread_mutex_lock(&(user->c_lock));
+            if(send(chanSocket, msg, strlen(msg), 0) == -1)
+            {
+                perror("Socket send() failed");
+                close(chanSocket);
+                pthread_mutex_lock(&lock);
+                list_delete(server->userlist, user);
+                pthread_mutex_unlock(&lock);
+                pthread_exit(NULL);
+            }   
+            pthread_mutex_unlock(&(user->c_lock));
         }
-        pthread_mutex_unlock(&(user->c_lock));
     }
     list_iterator_stop(chan->chan_users);
+    pthread_mutex_unlock(&(chan->chan_lock));
 }
 
 void logprint (logentry *tolog, chirc_server *ourserver, char *message){

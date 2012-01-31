@@ -174,10 +174,12 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
         else{
             params[paramnum][paramcounter] = msg[counter];
             paramcounter++;
+            //add terminating NULL, to be overwritten if needed
+            params[paramnum][paramcounter] = '\0';
         }
         counter++;
     }
-    
+
     handle_chirc_message(server, clientpt, params);
     
 }

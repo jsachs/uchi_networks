@@ -35,7 +35,7 @@ void do_registration(person *client, chirc_server *server);
 void logprint (logentry *tolog, chirc_server *ourserver, char *logerror);
 
 void channel_join(person *client, chirc_server *server, char* channel_name);
-void sendtochannel(chirc_server *server, channel *chan, char *msg);
+void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender);
 
 
 //all the handlers
@@ -335,11 +335,11 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
             //check that user is member of channel
             seek_arg->field = CHANUSER;
             seek_arg->value = user->nick;
-            pthread_mutex_lock(&lock);  //probably don't need to lock whole server to just access this channel
+            pthread_mutex_lock(&(chanpt->chan_lock));  
             chansender = (chanuser *)list_seek(chanpt->chan_users, seek_arg);
-            pthread_mutex_unlock(&lock);
+            pthread_mutex_unlock(&(chanpt->chan_lock));
             if (!chansender) {
-                constr_reply(ERR_NOSUCHNICK, user, reply, server, target_name);
+                constr_reply(ERR_CANNOTSENDTOCHAN, user, reply, server, target_name);
                 
                 pthread_mutex_lock(&(user->c_lock));
                 if(send(senderSocket, reply, strlen(reply), 0) == -1)
@@ -355,7 +355,7 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                 
             }
             else{
-                sendtochannel(server, chanpt, priv_msg);
+                sendtochannel(server, chanpt, priv_msg, user->nick);
             }
             
         }

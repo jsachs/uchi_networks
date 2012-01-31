@@ -30,7 +30,7 @@ extern pthread_mutex_t lock;
 extern pthread_mutex_t loglock;
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
-void sendtochannel(chirc_server *server, channel *chan, char *msg);
+void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender);
 int fun_seek(const void *el, const void *indicator);
 
 void channel_join(person *client, chirc_server *server, char* channel_name){
@@ -70,6 +70,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
 		channelpt->topic[0] = '\0';
 		channelpt->mode[0] = '\0';
 		channelpt->chan_users = &newlist;
+        pthread_mutex_init(&(channelpt->chan_lock), NULL);
         
         pthread_mutex_lock(&lock);
         list_append(server->chanlist, channelpt);
@@ -81,9 +82,9 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     seek_arg->field = CHANUSER;      // used in list seek
     seek_arg->value = client->nick;   // used in list seek
     
-    pthread_mutex_lock(&lock);
+    pthread_mutex_lock(&(channelpt->chan_lock));
     chanuser *chanuserpt = (chanuser *)list_seek(channelpt->chan_users, seek_arg);
-    pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&(channelpt->chan_lock));
     free(seek_arg);
     
     if (chanuserpt != NULL) return;
@@ -92,27 +93,18 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     chanuser *newuser = malloc(sizeof(chanuser));
     strcpy(newuser->nick, client->nick);
     newuser->mode[0] = '+';
+    pthread_mutex_lock(&(channelpt->chan_lock));
     list_append(channelpt->chan_users, newuser);
+    pthread_mutex_unlock(&(channelpt->chan_lock));
+    pthread_mutex_lock(&(client->c_lock));
     list_append(client->channel_names, cname);
+    pthread_mutex_unlock(&(client->c_lock));
 
     // Send appropriate replies
     // This first reply is send to all channel users
-    snprintf(reply, MAXMSG-1, ":%s!%s@%s JOIN %s", client->nick, client->user, client->address, channel_name);
+    snprintf(reply, MAXMSG-1, ":%s!%s@%s JOIN %s", client->nick, client->user, client->address, cname);
     strcat(reply, "\r\n");
-    sendtochannel(server, channelpt, reply);
-    /*
-    pthread_mutex_lock(&(client->c_lock));
-    if(send(clientSocket, reply, strlen(reply), 0) == -1)
-    {
-        perror("Socket send() failed");
-        close(clientSocket);
-        pthread_mutex_lock(&lock);
-        list_delete(server->userlist, client);
-        pthread_mutex_unlock(&lock);
-        pthread_exit(NULL);
-    }
-    pthread_mutex_unlock(&(client->c_lock));
-    */
+    sendtochannel(server, channelpt, reply, NULL);
     
     
     for (i = 0; i < 2; i++){

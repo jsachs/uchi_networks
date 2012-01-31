@@ -76,6 +76,7 @@ typedef struct {
     char name[MAXMSG];
     char topic[MAXMSG];
     char mode[3];
+    pthread_mutex_t chan_lock;
     list_t *chan_users;
 } channel;
 
