@@ -72,6 +72,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 255: // RPL_LUSERNAME
             sprintf(replmsg, ":I have %s clients and 1 servers", extra);
             break;
+        case 301:
+            strcpy(replmsg, extra);
+            break;
         case 305:
             strcpy(replmsg, ":You are no longer marked as being away");
             break;

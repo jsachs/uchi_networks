@@ -92,7 +92,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     // Finally, add the user to the channel
     chanuser *newuser = malloc(sizeof(chanuser));
     strcpy(newuser->nick, client->nick);
-    newuser->mode[0] = '+';
+    newuser->mode[0] = '\0';
     pthread_mutex_lock(&(channelpt->chan_lock));
     list_append(channelpt->chan_users, newuser);
     pthread_mutex_unlock(&(channelpt->chan_lock));
