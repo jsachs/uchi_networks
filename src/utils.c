@@ -87,6 +87,12 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 318: // RPL_ENDWHOIS
             sprintf(replmsg, "%s :End of WHOIS list", nick);
             break;
+        case 331: // RPL_NOTOPIC
+        	sprintf(replmsg, "%s :No topic is set", extra);
+        	break;
+        case 332: // RPL_TOPIC
+        	sprintf(replmsg, "%s :This is the topic", extra);
+        	break;
         case 375: // RPL_MOTDSTART
             sprintf(replmsg, ":- %s Message of the day - ", servname);
             break;

@@ -1085,7 +1085,42 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
         return 0;
     }
     
+    // if there is a topic parameter, set the topic
+    // eventually, only the operator can do this
+    if(params[2][0] != '\0')
+    	strcpy(channelpt->topic, params[2]);
     
+    // then determine the correct reply
+    if(channelpt->topic[0] == '\0'){
+    	constr_reply(RPL_NOTOPIC, user, reply, server, cname);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        return 0;
+    }
+    else {
+    	constr_reply(RPL_TOPIC, user, reply, server, cname);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        return 0;
+    }
     return 0;
 }
     
