@@ -51,6 +51,11 @@ int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params
 int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_JOIN(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_PART(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params);
+
+int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params);
+
 int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
 
 
@@ -76,6 +81,7 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
     else if (strcmp(command, "JOIN") == 0)    chirc_handle_JOIN(server, user, params);
     else if (strcmp(command, "AWAY") == 0)    chirc_handle_AWAY(server, user, params);
     else if (strcmp(command, "PART") == 0)    chirc_handle_PART(server, user, params);
+    else if (strcmp(command, "TOPIC") == 0)    chirc_handle_TOPIC(server, user, params);
     
     else chirc_handle_UNKNOWN(server, user, params);
 }
@@ -877,17 +883,20 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
 	char reply[MAXMSG];
     int clientSocket = user->clientSocket;
     
+    char *cname = malloc(strlen(params[1]));
+    strcpy(cname, params[1]);
+    
     // needs to check that the channel exists
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     seek_arg->field = CHAN;      // used in list seek
-    seek_arg->value = params[1];   // used in list seek
+    seek_arg->value = cname;   // used in list seek
     
     pthread_mutex_lock(&lock);
     channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     pthread_mutex_unlock(&lock);
     
     if(channelpt == NULL){
-    	constr_reply(ERR_NOSUCHCHANNEL, user, reply, server, params[1]);
+    	constr_reply(ERR_NOSUCHCHANNEL, user, reply, server, cname);
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
@@ -912,7 +921,7 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
     free(seek_arg);
     
     if (chanuserpt == NULL){
-    	constr_reply(ERR_NOTONCHANNEL, user, reply, server, params[1]);
+    	constr_reply(ERR_NOTONCHANNEL, user, reply, server, cname);
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
@@ -927,12 +936,30 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
         return 0;
     }
     
-    // if this is all good, delete the user from the channel
+    // send the part message to the channel
+    if(params[2][0]=='\0')
+    	snprintf(reply,MAXMSG-1,":%s!%s@%s PART %s",user->nick,user->user,user->address,params[1]);
+    else
+    	snprintf(reply,MAXMSG-1,":%s!%s@%s PART %s %s",user->nick,user->user,user->address,params[1],params[2]);
+    strcat(reply, "\r\n"); // tests are not seeing this for some reason
+    sendtochannel(server, channelpt, reply, NULL);
     
+    // delete the user from the channel
+    // delete the channel from the user's list of channels
+    pthread_mutex_lock(&(channelpt->chan_lock));
+    list_delete(channelpt->chan_users, chanuserpt);
+    pthread_mutex_unlock(&(channelpt->chan_lock));
     
-    // then send the part message to the channel
-	
-	return 0;
+    // channel name refuses to be deleted from user's list
+    // might need to fix this with a new seek?
+    pthread_mutex_lock(&(user->c_lock));
+    list_delete(user->channel_names, cname);
+    pthread_mutex_unlock(&(user->c_lock));
+    
+    // if the channel is empty, destroy the channel
+    // again, might need a new seek for this
+    
+    return 0;
 }
 
 //needs to check that you're registered first
@@ -1019,6 +1046,58 @@ int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params){
     return 0;
 }
 
+int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
+{
+	char reply[MAXMSG];
+    int clientSocket = user->clientSocket;
+    char *cname = malloc(strlen(params[1]));
+    strcpy(cname, params[1]);
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    
+    
+    // get a pointer to the requested channel
+    seek_arg->field = CHAN;      // used in list seek
+    seek_arg->value = cname;   // used in list seek
+    pthread_mutex_lock(&lock);
+    channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
+    pthread_mutex_unlock(&lock);
+    
+    // check to make sure the user is in the channel
+    seek_arg->field = CHANUSER;      // used in list seek
+    seek_arg->value = user->nick;   // used in list seek
+	pthread_mutex_lock(&(channelpt->chan_lock));
+    chanuser *chanuserpt = (chanuser *)list_seek(channelpt->chan_users, seek_arg);
+    pthread_mutex_unlock(&(channelpt->chan_lock));
+    free(seek_arg);
+    if (chanuserpt == NULL){
+    	constr_reply(ERR_NOTONCHANNEL, user, reply, server, cname);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        return 0;
+    }
+    
+    
+    return 0;
+}
+    
+int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
+{
+	return 0;
+}
+
+int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params)
+{
+	return 0;
+}
 
 
 int chirc_handle_UNKNOWN(chirc_server *server,  //current server
