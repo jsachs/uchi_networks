@@ -50,6 +50,7 @@ int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params)
 int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_JOIN(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_PART(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
 
 
@@ -74,6 +75,7 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
     
     else if (strcmp(command, "JOIN") == 0)    chirc_handle_JOIN(server, user, params);
     else if (strcmp(command, "AWAY") == 0)    chirc_handle_AWAY(server, user, params);
+    else if (strcmp(command, "PART") == 0)    chirc_handle_PART(server, user, params);
     
     else chirc_handle_UNKNOWN(server, user, params);
 }
@@ -868,6 +870,69 @@ int chirc_handle_JOIN(chirc_server *server,  //current server
 {
     channel_join(user, server, params[1]);
     return 0;
+}
+
+int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
+{
+	char reply[MAXMSG];
+    int clientSocket = user->clientSocket;
+    
+    // needs to check that the channel exists
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    seek_arg->field = CHAN;      // used in list seek
+    seek_arg->value = params[1];   // used in list seek
+    
+    pthread_mutex_lock(&lock);
+    channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
+    pthread_mutex_unlock(&lock);
+    
+    if(channelpt == NULL){
+    	constr_reply(ERR_NOSUCHCHANNEL, user, reply, server, params[1]);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        return 0;
+    }
+    
+    // needs to check that the user is in the channel
+    seek_arg->field = CHANUSER;      // used in list seek
+    seek_arg->value = user->nick;   // used in list seek
+    
+    pthread_mutex_lock(&(channelpt->chan_lock));
+    chanuser *chanuserpt = (chanuser *)list_seek(channelpt->chan_users, seek_arg);
+    pthread_mutex_unlock(&(channelpt->chan_lock));
+    free(seek_arg);
+    
+    if (chanuserpt == NULL){
+    	constr_reply(ERR_NOTONCHANNEL, user, reply, server, params[1]);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        return 0;
+    }
+    
+    // if this is all good, delete the user from the channel
+    
+    
+    // then send the part message to the channel
+	
+	return 0;
 }
 
 //needs to check that you're registered first
