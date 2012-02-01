@@ -42,6 +42,7 @@ void *service_single_client(void *args) {
     client.nick[0] = '\0';
     client.user[0] = '\0';
     client.fullname[0] = '\0';
+    client.mode[0] = '\0';
     pthread_mutex_init(&(client.c_lock), NULL);
     
     //unpack arguments

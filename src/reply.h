@@ -21,6 +21,8 @@
 #define RPL_LUSERME			"255"
 
 #define RPL_AWAY			"301"
+#define RPL_UNAWAY          "305"
+#define RPL_NOWAWAY         "306"
 
 #define RPL_WHOISUSER		"311"
 #define RPL_WHOISSERVER		"312"

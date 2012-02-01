@@ -118,6 +118,7 @@ int chirc_handle_NICK(chirc_server  *server, // current server
         if (strlen(user->nick)){    //changing NICK already given
             //send notification of change in NICK
             snprintf(reply, MAXMSG - 2, ":%s!%s@%s NICK :%s", user->nick, user->user, user->address, newnick);
+            strcat(reply, "\r\n");
             pthread_mutex_lock(&(user->c_lock));
             if(send(clientSocket, reply, strlen(reply), 0) == -1)
             {
@@ -195,13 +196,14 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
     int clientSocket = user->clientSocket;
     
     if(strlen(msg[1]))
-        quitmsg = msg[1];
+        quitmsg = msg[1] + 1;
     else
-        quitmsg = ":Client Quit";   //default
+        quitmsg = "Client Quit";   //default
     
     //send first QUIT message
     //(freenode.net sent this before the error message, so we did as well, although RFC doesn't mention it)
     snprintf(reply, MAXMSG - 2, ":%s!%s@%s QUIT %s", user->nick, user->user, user->address, quitmsg);
+    strcat(reply, "\r\n");
     
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -217,6 +219,7 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
     
     //send ERROR reply
     snprintf(reply, MAXMSG - 2, "ERROR :Closing Link: %s (%s)", user->address, quitmsg);
+    strcat(reply, "\r\n");
     
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -673,7 +676,7 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
                                                        whoispt->user,
                                                        whoispt->address,
                                                        whoispt->fullname
-        );  
+        ); 
         
         constr_reply(RPL_WHOISUSER, user, reply, server, wiuser); // passes the whois lookup for user to constr_reply
         pthread_mutex_lock(&(user->c_lock));
@@ -867,7 +870,87 @@ int chirc_handle_JOIN(chirc_server *server,  //current server
     return 0;
 }
 
+//needs to check that you're registered first
 int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params){
+    char reply[MAXMSG];
+    int clientSocket = user->clientSocket;
+    char *away = strchr(user->mode, (int) 'a'); 
+    char *c;
+    
+    //check that sender is registered
+    if(!(strlen(user->nick) && strlen(user->user))){
+        constr_reply(ERR_NOTREGISTERED, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        return 0;
+    }
+    
+    //determine whether they're setting or removing away message
+    if(strlen(params[1]) == 0){     //no away param, so removing away message
+        //if mode is away, change it
+        if(away != NULL){
+            pthread_mutex_lock(&(user->c_lock));
+                for(c = away; *c != '\0'; c++)
+                    *c = *(c+1);
+            pthread_mutex_unlock(&(user->c_lock));
+        }
+
+        //send RPL_UNAWAY
+        constr_reply(RPL_UNAWAY, user, reply, server, NULL);
+        
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+    }
+    
+    else{
+        //if mode isn't away, set it to away
+        if(away == NULL){
+            pthread_mutex_lock(&(user->c_lock));
+            strcat(user->mode, "a");
+            pthread_mutex_unlock(&(user->c_lock));
+        }
+            
+        //set away message to params[1]
+        pthread_mutex_lock(&(user->c_lock));
+        strcpy(user->away, params[1]);
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        
+        //send RPL_NOWAWAY
+        constr_reply(RPL_NOWAWAY, user, reply, server, NULL);
+        
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+    }
+                        
     return 0;
 }
 

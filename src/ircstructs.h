@@ -45,6 +45,8 @@ typedef struct {
 	char  user[MAXMSG];
 	char  fullname[MAXMSG];
 	char* address;
+    char mode[5];
+    char away[MAXMSG];  //away message
 	pthread_mutex_t c_lock;
     logentry *tolog;
     list_t *channel_names;
@@ -75,14 +77,14 @@ typedef struct
 typedef struct {
     char name[MAXMSG];
     char topic[MAXMSG];
-    char mode[3];
+    char mode[5];
     pthread_mutex_t chan_lock;
     list_t *chan_users;
 } channel;
 
 typedef struct {
-    char nick[MAXMSG];
-    char mode[3];
+    char nick[MAXMSG];  //nick of channel members
+    char mode[5];       //member status modes 
 } chanuser;
 
 
