@@ -147,6 +147,7 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
     int counter = 0;
     int paramcounter = 0;
     int paramnum = 0;
+    int i;
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     
     seek_arg->field = FD;
@@ -159,6 +160,10 @@ void parse(char *msg, int clientSocket, chirc_server *server) {
     //note in log structure what message is and where it came from
     strcpy(clientpt->tolog->msgin, msg);
     strcpy(clientpt->tolog->userin, clientpt->nick);
+    
+    //start by setting every param to NULL
+    for(i = 0; i < MAXPARAMS; i++)
+        params[i][0] = '\0';
     
     // process to break a message into its component commands/parameters
     while(msg[counter] != '\0'){

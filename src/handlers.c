@@ -48,9 +48,11 @@ int chirc_handle_PING(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_WHOIS(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_JOIN(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
 
-int chirc_handle_JOIN(chirc_server *server, person *user, chirc_message params);
+
 
 void handle_chirc_message(chirc_server *server, person *user, chirc_message params)
 {
@@ -71,6 +73,7 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
     else if (strcmp(command, "MOTD") == 0)    chirc_handle_MOTD(server, user, params);
     
     else if (strcmp(command, "JOIN") == 0)    chirc_handle_JOIN(server, user, params);
+    else if (strcmp(command, "AWAY") == 0)    chirc_handle_AWAY(server, user, params);
     
     else chirc_handle_UNKNOWN(server, user, params);
 }
@@ -370,39 +373,59 @@ int chirc_handle_NOTICE(chirc_server *server,  //current server
                         person *user,          //current user
                         chirc_message params)  //message received
 {
+    int clientSocket = user->clientSocket;
     char notice[MAXMSG];
-    char *target_nick = params[1];
+    char reply[MAXMSG];
+    char *target_name = params[1];
+    chanuser *chansender;
     char logerror[MAXMSG];
     
     //get pointer to recipient
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     seek_arg->field = NICK;
-    seek_arg->value = target_nick;
+    seek_arg->value = target_name;
     pthread_mutex_lock(&lock);
     person *recippt = (person *)list_seek(server->userlist, seek_arg);
+    seek_arg->field = CHAN;
+    channel *chanpt = (channel *)list_seek(server->chanlist, seek_arg);
     pthread_mutex_unlock(&lock);
     free(seek_arg);
     
-    //check that sender is registered; if not, do nothing
+    //check that sender is registered--although this is a notice, the reference server indicates that ERR_NOTREGISTERED should still be returned to unregistered user
     if(!(strlen(user->nick) && strlen(user->user))){
+        constr_reply(ERR_NOTREGISTERED, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
         return 0;
     }
     
+    //construct message
+    snprintf(notice, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
+             user->user,
+             user->address,
+             params[0],
+             params[1],
+             params[2]
+             );
+    
+    strcat(notice, "\r\n");
+    
     //do nothing if recipient does not exist
     
+    //if the recipient is a user
     if (recippt)
     {
         pthread_mutex_lock(&(recippt->c_lock));
-        snprintf(notice, MAXMSG - 2, ":%s!%s@%s %s %s %s", user->nick,
-                                                           user->user,
-                                                           user->address,
-                                                           params[0],
-                                                           params[1],
-                                                           params[2]
-        );
-        strcat(notice, "\r\n");
-    
-    
         if(send(recippt->clientSocket, notice, strlen(notice), 0) == -1)
         {
             pthread_mutex_lock(&loglock);
@@ -417,6 +440,20 @@ int chirc_handle_NOTICE(chirc_server *server,  //current server
             pthread_exit(NULL);
         }
         pthread_mutex_unlock(&(recippt->c_lock));
+    }
+    
+    //if the recipient is a channel
+    if (chanpt){
+        //check that user is member of channel
+        seek_arg->field = CHANUSER;
+        seek_arg->value = user->nick;
+        pthread_mutex_lock(&(chanpt->chan_lock));  
+        chansender = (chanuser *)list_seek(chanpt->chan_users, seek_arg);
+        pthread_mutex_unlock(&(chanpt->chan_lock));
+        
+        //only send if user is member of channel; otherwise do nothing
+        if (chansender) 
+            sendtochannel(server, chanpt, notice, user->nick);
     }
 
     return 0;
@@ -830,6 +867,9 @@ int chirc_handle_JOIN(chirc_server *server,  //current server
     return 0;
 }
 
+int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params){
+    return 0;
+}
 
 
 
