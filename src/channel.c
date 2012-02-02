@@ -32,6 +32,7 @@ extern pthread_mutex_t loglock;
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
 void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender);
 int fun_seek(const void *el, const void *indicator);
+void user_exit(chirc_server *server, person *user);
 
 void channel_join(person *client, chirc_server *server, char* channel_name){
     int i;
@@ -54,7 +55,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     pthread_mutex_lock(&lock);
     channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     pthread_mutex_unlock(&lock);
-	
+	free(seek_arg);
 
     // Create a new channel if it doesn't
     if (channelpt == NULL){
@@ -103,16 +104,11 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
-            close(clientSocket);
-            pthread_mutex_lock(&lock);
-            list_delete(server->userlist, client);
-            pthread_mutex_unlock(&lock);
-            free(client->address);
-            free(client);
-            pthread_exit(NULL);
+            user_exit(server, client);
         }
         pthread_mutex_unlock(&(client->c_lock));
     }
+    free(dummy);
 }
 
 

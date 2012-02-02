@@ -25,16 +25,6 @@ typedef struct {
     list_t *chanlist;
     unsigned int numregistered;
 } chirc_server;
-
-
-typedef struct
-{
-    char msgin[MAXMSG];
-    char msgout[MAXMSG];
-    char userin[MAXMSG];
-    char userout[MAXMSG];
-} logentry;
-
  
 typedef char chirc_message[MAXPARAMS][MAXMSG-1];
 
@@ -48,8 +38,8 @@ typedef struct {
     char mode[5];
     char away[MAXMSG];  //away message
 	pthread_mutex_t c_lock;
-    logentry *tolog;
     list_t *my_chans;   //list of mychan structs
+    pthread_t tid;
 } person;
 
 //parameter for seeker function
