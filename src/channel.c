@@ -87,6 +87,9 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     pthread_mutex_lock(&(client->c_lock));
     list_append(client->my_chans, newchan);
     pthread_mutex_unlock(&(client->c_lock));
+    pthread_mutex_lock(&(channelpt->chan_lock));
+    channelpt->numusers++;
+    pthread_mutex_unlock(&(channelpt->chan_lock));
 
     // Send appropriate replies
     // This first reply is send to all channel users

@@ -962,20 +962,18 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
     pthread_mutex_lock(&(user->c_lock));
     list_delete(user->my_chans, dummy);
     pthread_mutex_unlock(&(user->c_lock));
+    pthread_mutex_lock(&(channelpt->chan_lock));
+    channelpt->numusers--;
+    pthread_mutex_unlock(&(channelpt->chan_lock));
     
     // if the channel is empty, destroy the channel
-    /*
-    if(list_size(channelpt->chan_users)==0) {
-    	pthread_mutex_destroy(&(channelpt->chan_lock));
-    	list_destroy(channelpt->chan_users);
-    	
+    if((channelpt->numusers)==0){
+    	pthread_mutex_lock(&lock);
     	list_delete(server->chanlist, channelpt);
-    	
+    	pthread_mutex_unlock(&lock);
     	free(channelpt);
-    	
-    	return 0;
     }
-     */
+    
     free(dummy);
     return 0;
 }
