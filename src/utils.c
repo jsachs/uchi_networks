@@ -87,6 +87,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 318: // RPL_ENDWHOIS
             sprintf(replmsg, "%s :End of WHOIS list", nick);
             break;
+        case 323: // RPL_LISTEND
+        	sprintf(replmsg, ":End of LIST");
+        	break;
         case 331: // RPL_NOTOPIC
         	sprintf(replmsg, "%s :No topic is set", extra);
         	break;
@@ -193,11 +196,14 @@ int fun_seek(const void *el, const void *indicator){
     person *client = NULL;
     channel *chan  = NULL;
     chanuser *cuser = NULL;
+    char *channame = NULL;
 
     if (field == 5)
         chan = (channel *)el;
     else if (field ==  6)
     	cuser = (chanuser *)el;
+    else if (field == 7)
+    	channame = (char *)el;
     else
 	client = (person *)el;
  
@@ -206,7 +212,7 @@ int fun_seek(const void *el, const void *indicator){
         fd = el_info->fd;
     else
         value = el_info->value;
-    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 6){
+    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 7){
         perror("bad argument to fun_seek");
         return 0;
     }
@@ -240,16 +246,25 @@ int fun_seek(const void *el, const void *indicator){
                 return 1;
             else
                 return 0;
+            break;
 		case 5:
 	  	 	if (strcmp(chan->name, value) == 0)
 				return 1;
 	   		else
 				return 0;
+			break;
 		case 6:
 			if(strcmp(cuser->nick, value) == 0)
 				return 1;
 			else
 				return 0;
+			break;
+		case 7:
+			if(strcmp(channame, value) == 0)
+				return 1;
+			else
+				return 0;
+		break;
 	    default:
             return 0;
             break;

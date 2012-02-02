@@ -11,6 +11,7 @@
 #define FD			4
 #define CHAN        5
 #define CHANUSER	6
+#define CHANNAME    7
 
 #define MAXMSG 512
 #define MAXPARAMS 16
@@ -63,7 +64,7 @@ typedef struct{
 //pass to server threads
 typedef struct
 {
-    chirc_server *server;
+	chirc_server *server;
 } serverArgs;
 
 //pass to thread to handle each client
