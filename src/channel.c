@@ -81,7 +81,6 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     }
     
     // Finally, add the user to the channel
-    (channelpt->numusers)++;
     newchan = malloc(sizeof(mychan));
     strcpy(newchan->name, cname);
     newchan->mode[0] = '\0';

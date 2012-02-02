@@ -837,7 +837,7 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
     else
     	snprintf(reply,MAXMSG-1,":%s!%s@%s PART %s %s",user->nick,user->user,user->address,params[1],params[2]);
     
-    strcat(reply, "\r\n"); // tests are not seeing this for some reason
+    strcat(reply, "\r\n"); 
     sendtochannel(server, channelpt, reply, NULL);
     
     // delete the user from the channel
