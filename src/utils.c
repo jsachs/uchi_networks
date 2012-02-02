@@ -87,8 +87,14 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 312: // RPL_WHOISSERVER
             sprintf(replmsg, "%s", extra);
             break;
+        case 313:
+            sprintf(replmsg, "%s :is an IRC operator", extra);
+            break;
         case 318: // RPL_ENDWHOIS
             sprintf(replmsg, "%s :End of WHOIS list", nick);
+            break;
+        case 319: // RPL_WHOISCHANNELS
+            sprintf(replmsg, ":%s", extra);
             break;
         case 323: // RPL_LISTEND
         	sprintf(replmsg, ":End of LIST");
@@ -273,8 +279,8 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender)
     list_iterator_start(server->userlist);
     while(list_iterator_hasnext(server->userlist)){
         user = (person *)list_iterator_next(server->userlist);
-        pthread_mutex_lock(&(user->c_lock));
         if ((sender == NULL || strcmp(user->nick, sender) != 0) && list_contains(user->my_chans, dummy)){
+            pthread_mutex_lock(&(user->c_lock));    //should actually lock before reading user_nick, but that causes deadlock--deal with this later
             chanSocket = user->clientSocket;
             if(send(chanSocket, msg, strlen(msg), 0) == -1)
             {
@@ -285,11 +291,12 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender)
                 pthread_mutex_unlock(&lock);
                 pthread_exit(NULL);
             }   
+            pthread_mutex_unlock(&(user->c_lock));
         }
-        pthread_mutex_unlock(&(user->c_lock));
     }
     list_iterator_stop(server->userlist);
     pthread_mutex_unlock(&lock);
+    free(dummy);
 }
 
 //sends message to all channels a user is on. does not return message to sender
@@ -311,6 +318,7 @@ void sendtoallchans(chirc_server *server, person *user, char *msg){
     }
     list_iterator_stop(user->my_chans);
     pthread_mutex_unlock(&(user->c_lock));
+    free(seek_arg);
 }
 
 int fun_compare(const void *a, const void *b){
@@ -327,12 +335,63 @@ int fun_compare(const void *a, const void *b){
         return -1;
 }
 
-void logprint (logentry *tolog, chirc_server *ourserver, char *message){
-    FILE *logpt = fopen("log.txt", "a");
-    if(tolog != NULL)
-        fprintf(logpt, "Received message \"%s\" from %s, sent message \"%s\" to %s\n", tolog->msgin, tolog->userin, tolog->msgout, tolog->userout);
-    else
-        fprintf(logpt, "%s\n", message);
-    fclose(logpt);
+void channel_destroy(chirc_server *server, channel *chan){
+    pthread_mutex_lock(&(chan->chan_lock));
+    //make sure it should actually be destroyed
+    if (chan->numusers != 0) {
+        pthread_mutex_unlock(&(chan->chan_lock));
+        return;
+    }
+    pthread_mutex_lock(&lock);
+    list_delete(server->chanlist, chan);
+    pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&(chan->chan_lock));
+    
+    pthread_mutex_destroy(&(chan->chan_lock));
+    
+    //free(chan);
     return;
+}
+
+void user_exit(chirc_server *server, person *user){         //removes all information about user and frees all associated structs/memory
+    pthread_t userid = user->tid;
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    seek_arg->field = CHAN;
+    channel *chan;
+    mychan *dummy = malloc(sizeof(mychan));
+    pthread_mutex_lock(&(user->c_lock));
+    close(user->clientSocket);
+    //if user is a member of any channels, decrement those channels numuser counters
+    list_iterator_start(user->my_chans);
+    while(list_iterator_hasnext(user->my_chans)){
+        dummy = (mychan *)list_iterator_next(user->my_chans);
+        seek_arg->value = dummy->name;
+        pthread_mutex_lock(&lock);
+        chan = (channel *)list_seek(server->chanlist, seek_arg);
+        pthread_mutex_unlock(&lock);
+        pthread_mutex_lock(&(chan->chan_lock));
+        (chan->numusers)--;
+        pthread_mutex_unlock(&(chan->chan_lock));
+        if(chan->numusers == 0)
+            channel_destroy(server, chan);
+    }
+    list_iterator_stop(user->my_chans);
+    
+    //free memory and delete user from userlist
+    list_destroy(user->my_chans);
+    free(user->address);
+    
+    pthread_mutex_lock(&lock);
+    list_delete(server->userlist, user);
+    pthread_mutex_unlock(&lock);
+    
+    pthread_mutex_unlock(&(user->c_lock));
+    pthread_mutex_destroy(&(user->c_lock));
+    
+    free(seek_arg);
+    free(dummy);
+    if(userid == pthread_self())
+        pthread_exit(NULL);
+    else
+        pthread_cancel(userid);
 }

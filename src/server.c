@@ -66,10 +66,9 @@ void *service_single_client(void *args) {
     client.clientSocket = socket;
     client.address = clientname;
     client.my_chans = &userchans;
+    client.tid = pthread_self();
     
     free(wa);
-
-    client.tolog = malloc(sizeof(logentry));
 
     //add client to list
     pthread_mutex_lock(&lock);
