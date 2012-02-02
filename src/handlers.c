@@ -55,6 +55,9 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
 
 int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_NAMES(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params);
+int chirc_handle_OPER(chirc_server *server, person *user, chirc_message params);
 
 int chirc_handle_UNKNOWN(chirc_server *server, person *user, chirc_message params);
 
@@ -81,7 +84,10 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
     else if (strcmp(command, "JOIN") == 0)    chirc_handle_JOIN(server, user, params);
     else if (strcmp(command, "AWAY") == 0)    chirc_handle_AWAY(server, user, params);
     else if (strcmp(command, "PART") == 0)    chirc_handle_PART(server, user, params);
-    else if (strcmp(command, "TOPIC") == 0)    chirc_handle_TOPIC(server, user, params);
+    else if (strcmp(command, "TOPIC") == 0)   chirc_handle_TOPIC(server, user, params);
+    else if (strcmp(command, "NAMES") == 0)   chirc_handle_NAMES(server, user, params);
+    else if (strcmp(command, "MODE") == 0)   chirc_handle_MODE(server, user, params);
+    else if (strcmp(command, "OPER") == 0)   chirc_handle_OPER(server, user, params);
     
     else chirc_handle_UNKNOWN(server, user, params);
 }
@@ -1164,7 +1170,7 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
     
 int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
 {
-	char reply[MAXMSG];
+    char reply[MAXMSG];
     int clientSocket = user->clientSocket;
     char *cname = malloc(strlen(params[1]));
     strcpy(cname, params[1]);
@@ -1178,7 +1184,7 @@ int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
     	channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     	pthread_mutex_unlock(&lock);
 		
-		snprintf(reply,MAXMSG-1,":%s!%s@%s PART %s %s",user->nick,user->user,user->address,params[1],params[2]);
+	snprintf(reply,MAXMSG-1,":%s!%s@%s PART %s %s",user->nick,user->user,user->address,params[1],params[2]);
     	strcat(reply, "\r\n"); // tests are not seeing this for some reason
     	}
     	
@@ -1189,9 +1195,63 @@ int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
 	return 0;
 }
 
+int chirc_handle_NAMES(chirc_server *server, person *user, chirc_message params)
+{
+    
+    
+    return 0;
+}
+
 int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params)
 {
-	return 0;
+    return 0;
+}
+
+int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
+{
+    return 0;
+}
+
+int chirc_handle_OPER(chirc_server *server, person *user, chirc_message params)
+{
+    char reply[MAXMSG];
+    int clientSocket = user->clientSocket;
+    
+    if (strcmp(params[2], server->pw)!=0) {
+	constr_reply(ERR_PASSWDMISMATCH, user, reply, server, params[0]);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        return 0;
+    }
+    else {
+        // give the person operator power first
+
+        // then send them their message
+        constr_reply(RPL_YOUREOPER, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            close(clientSocket);
+            pthread_mutex_lock(&lock);
+            list_delete(server->userlist, user);
+            pthread_mutex_unlock(&lock);
+            pthread_exit(NULL);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        return 0;
+    }
+
+    return 0;
 }
 
 

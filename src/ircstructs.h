@@ -17,7 +17,7 @@
 #define MAXPARAMS 16
 
 typedef struct {
-	char *pw; //operator password
+    char *pw; //operator password
     char *servername; //canonical name of server
     char *port; //port we're listening on
     char *version;

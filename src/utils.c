@@ -114,6 +114,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 366: // RPL_ENDOFNAMES
         	sprintf(replmsg, "#foobar :End of NAMES list");
         	break;
+        case 381: // RPL_YOUREOPER
+                sprintf(replmsg, ":You are now an IRC operator");
+                break;
         case 401: // ERR_NOSUCHNICK
             sprintf(replmsg, "%s :No such nick/channel", extra);
             break;
@@ -136,11 +139,13 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, "%s :Nickname is already in use", extra);
             break;
         case 451:
-            strcpy(replmsg, ":You have no registered");
+            strcpy(replmsg, ":You have not registered");
             break;
         case 462: // ERR_ALREADYREGISTERED
             strcpy(replmsg, ":Unauthorized command (already registered)");
             break;
+        case 464: // ERR_PASSWDMISMATCH
+            sprintf(replmsg, ":Password incorrect");
         
         default:
             break;
