@@ -11,11 +11,12 @@
 #define FD			4
 #define CHAN        5
 
+
 #define MAXMSG 512
 #define MAXPARAMS 16
 
 typedef struct {
-	char *pw; //operator password
+    char *pw; //operator password
     char *servername; //canonical name of server
     char *port; //port we're listening on
     char *version;
@@ -62,7 +63,7 @@ typedef struct{
 //pass to server threads
 typedef struct
 {
-    chirc_server *server;
+	chirc_server *server;
 } serverArgs;
 
 //pass to thread to handle each client

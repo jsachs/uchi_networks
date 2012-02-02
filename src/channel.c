@@ -39,7 +39,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     int clientSocket = client->clientSocket;
     char reply[MAXMSG];
     char *replies[2] = {RPL_NAMREPLY,
-    			RPL_ENDOFNAMES
+    			        RPL_ENDOFNAMES
     };
     mychan *newchan;
     
@@ -112,3 +112,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
         pthread_mutex_unlock(&(client->c_lock));
     }
 }
+
+
+
+

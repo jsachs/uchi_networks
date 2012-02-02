@@ -90,6 +90,15 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 318: // RPL_ENDWHOIS
             sprintf(replmsg, "%s :End of WHOIS list", nick);
             break;
+        case 323: // RPL_LISTEND
+        	sprintf(replmsg, ":End of LIST");
+        	break;
+        case 331: // RPL_NOTOPIC
+        	sprintf(replmsg, "%s :No topic is set", extra);
+        	break;
+        case 332: // RPL_TOPIC
+        	sprintf(replmsg, "%s :This is the topic", extra);
+        	break;
         case 375: // RPL_MOTDSTART
             sprintf(replmsg, ":- %s Message of the day - ", servname);
             break;
@@ -99,16 +108,25 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 376: // RPL_ENDOFMOTD
             sprintf(replmsg, ":- End of MOTD command");
             break;
-        case 353:
+        case 353: // RPL_NAMREPLY
         	sprintf(replmsg, "= #foobar :foobar1 foobar2 foobar3");
         	break;
-        case 366:
+        case 366: // RPL_ENDOFNAMES
         	sprintf(replmsg, "#foobar :End of NAMES list");
         	break;
+        case 381: // RPL_YOUREOPER
+                sprintf(replmsg, ":You are now an IRC operator");
+                break;
         case 401: // ERR_NOSUCHNICK
             sprintf(replmsg, "%s :No such nick/channel", extra);
             break;
-        case 404:
+        case 403: // ERR_NOSUCHCHANNEL
+        	sprintf(replmsg, "%s :No such channel", extra);
+        	break;
+        case 442: // ERR_NOTONCHANNEL
+        	sprintf(replmsg, "%s :You're not on that channel", extra);
+        	break;
+        case 404: // ERR_CANNOTSENDTOCHAN
             sprintf(replmsg, "%s :Cannot send to channel", extra);
             break;
         case 421: // ERR_UNKNOWNCOMMAND
@@ -121,11 +139,13 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, "%s :Nickname is already in use", extra);
             break;
         case 451:
-            strcpy(replmsg, ":You have no registered");
+            strcpy(replmsg, ":You have not registered");
             break;
         case 462: // ERR_ALREADYREGISTERED
             strcpy(replmsg, ":Unauthorized command (already registered)");
             break;
+        case 464: // ERR_PASSWDMISMATCH
+            sprintf(replmsg, ":Password incorrect");
         
         default:
             break;

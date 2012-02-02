@@ -46,6 +46,7 @@
 #define RPL_MOTDSTART		"375"
 #define RPL_MOTD			"372"
 #define RPL_ENDOFMOTD		"376"
+#define RPL_YOUREOPER           "381"
 
 #define ERR_NOSUCHNICK			"401"
 #define ERR_NOSUCHCHANNEL		"403"
@@ -56,6 +57,7 @@
 #define ERR_NOTONCHANNEL		"442"
 #define ERR_NOTREGISTERED		"451"
 #define ERR_ALREADYREGISTRED	"462"
+#define ERR_PASSWDMISMATCH      "464"
 #define ERR_CHANOPRIVSNEEDED	"482"
 
 #endif /* REPLY_H_ */
