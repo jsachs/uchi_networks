@@ -971,10 +971,19 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
         return 0;
     }
     
-    // if there is a topic parameter, set the topic
-    // eventually, only the operator can do this
-    if(params[2][0] != '\0')
+    // if there is a topic parameter, check if the user is operator
+    // if they are, they can set the topic
+    if(params[2][0] != '\0') {
+    	// check operator
+    	
+    	// if topic is changed, relay it to the channel
     	strcpy(channelpt->topic, params[2]);
+    	snprintf(reply,MAXMSG-1, ":%s!%s@%s TOPIC %s %s",user->nick,user->user,user->address,
+    	                                                 cname,channelpt->topic);
+    	strcat(reply, "\r\n");
+        sendtochannel(server, channelpt, reply, NULL);
+    }
+    	
     
     // then determine the correct reply
     if(channelpt->topic[0] == '\0'){
@@ -988,7 +997,8 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
         pthread_mutex_unlock(&(user->c_lock));
     }
     else {
-    	constr_reply(RPL_TOPIC, user, reply, server, cname);
+    	snprintf(reply,MAXMSG-1, "%s %s", cname, channelpt->topic);
+        constr_reply(RPL_TOPIC, user, reply, server, NULL);
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
