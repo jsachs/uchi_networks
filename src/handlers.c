@@ -1082,8 +1082,8 @@ int chirc_handle_NAMES(chirc_server *server, person *user, chirc_message params)
                 first = 0;
                 buff = MAXMSG - strlen(antisocial);
                 strncat(antisocial, someone->nick, buff);
-                pthread_mutex_unlock(&(someone->c_lock));
             }
+            pthread_mutex_unlock(&(someone->c_lock));
         }
         list_iterator_stop(server->userlist);
         pthread_mutex_unlock(&lock);
