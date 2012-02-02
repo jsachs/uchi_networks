@@ -222,6 +222,8 @@ int chirc_handle_QUIT(chirc_server  *server, // current server
     snprintf(reply, MAXMSG - 2, ":%s!%s@%s QUIT %s", user->nick, user->user, user->address, quitmsg);
     strcat(reply, "\r\n");
     
+    sendtoallchans(server, user, reply);
+    
     pthread_mutex_lock(&(user->c_lock));
     if(send(clientSocket, reply, strlen(reply), 0) == -1)
     {
@@ -962,12 +964,12 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
     pthread_mutex_lock(&(user->c_lock));
     list_delete(user->my_chans, dummy);
     pthread_mutex_unlock(&(user->c_lock));
+    (channelpt->numusers)--;
     
     // if the channel is empty, destroy the channel
-    /*
-    if(list_size(channelpt->chan_users)==0) {
+    
+    if(channelpt->numusers==0) {
     	pthread_mutex_destroy(&(channelpt->chan_lock));
-    	list_destroy(channelpt->chan_users);
     	
     	list_delete(server->chanlist, channelpt);
     	
@@ -975,7 +977,7 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
     	
     	return 0;
     }
-     */
+    
     free(dummy);
     return 0;
 }

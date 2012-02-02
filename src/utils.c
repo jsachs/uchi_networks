@@ -273,8 +273,8 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender)
     list_iterator_start(server->userlist);
     while(list_iterator_hasnext(server->userlist)){
         user = (person *)list_iterator_next(server->userlist);
-        pthread_mutex_lock(&(user->c_lock));
         if ((sender == NULL || strcmp(user->nick, sender) != 0) && list_contains(user->my_chans, dummy)){
+            pthread_mutex_lock(&(user->c_lock));    //should actually lock before reading user_nick, but that causes deadlock--deal with this later
             chanSocket = user->clientSocket;
             if(send(chanSocket, msg, strlen(msg), 0) == -1)
             {
@@ -285,8 +285,8 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender)
                 pthread_mutex_unlock(&lock);
                 pthread_exit(NULL);
             }   
+            pthread_mutex_unlock(&(user->c_lock));
         }
-        pthread_mutex_unlock(&(user->c_lock));
     }
     list_iterator_stop(server->userlist);
     pthread_mutex_unlock(&lock);
