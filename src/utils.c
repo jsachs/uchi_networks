@@ -123,9 +123,6 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 403: // ERR_NOSUCHCHANNEL
         	sprintf(replmsg, "%s :No such channel", extra);
         	break;
-        case 442: // ERR_NOTONCHANNEL
-        	sprintf(replmsg, "%s :You're not on that channel", extra);
-        	break;
         case 404: // ERR_CANNOTSENDTOCHAN
             sprintf(replmsg, "%s :Cannot send to channel", extra);
             break;
@@ -138,6 +135,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 433: // ERR_NICKNAMEINUSE
             sprintf(replmsg, "%s :Nickname is already in use", extra);
             break;
+        case 442: // ERR_NOTONCHANNEL
+        	sprintf(replmsg, "%s :You're not on that channel", extra);
+        	break;
         case 451:
             strcpy(replmsg, ":You have not registered");
             break;
