@@ -33,7 +33,7 @@ extern pthread_mutex_t loglock;
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
 void do_registration(person *client, chirc_server *server);
 void logprint (logentry *tolog, chirc_server *ourserver, char *logerror);
-
+void sendtoallchans(chirc_server *server, person *user, char *msg);
 void channel_join(person *client, chirc_server *server, char* channel_name);
 void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender);
 
@@ -129,11 +129,14 @@ int chirc_handle_NICK(chirc_server  *server, // current server
                 close(clientSocket);
                 pthread_exit(NULL);
             }
-            //actually change nick
+            
+            //actually change nick--also need to change it in each channel!
             pthread_mutex_unlock(&(user->c_lock));
+            sendtoallchans(server, user, reply);
             pthread_mutex_lock(&lock);
             strcpy(user->nick, newnick);
             pthread_mutex_unlock(&lock);
+
         }
         else{
             //this is the first time nick is given

@@ -30,6 +30,7 @@
 extern pthread_mutex_t lock;
 
 void parse_message(int clientSocket, chirc_server *server);
+int fun_seek(const void *el, const void *indicator);
 
 void *service_single_client(void *args) {
 	
@@ -52,6 +53,10 @@ void *service_single_client(void *args) {
     
     //set up client struct
     list_init(&userchans);
+    if(list_attributes_seeker(&userchans, fun_seek) == -1){
+        perror("list fail");
+        exit(-1);
+    }
     clientname = wa->clientname;
     client.clientSocket = socket;
     client.address = clientname;

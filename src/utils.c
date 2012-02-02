@@ -254,7 +254,6 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender)
     person *user;
     seek_arg->field = NICK;
     
-    //need to lock channel too!
     pthread_mutex_lock(&(chan->chan_lock));
     list_iterator_start(chan->chan_users);
     while(list_iterator_hasnext(chan->chan_users)){
@@ -281,6 +280,25 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender)
     }
     list_iterator_stop(chan->chan_users);
     pthread_mutex_unlock(&(chan->chan_lock));
+}
+
+//sends message to all channels a user is on. does not return message to sender
+void sendtoallchans(chirc_server *server, person *user, char *msg){
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    seek_arg->field = CHAN;
+    channel *chan;
+    
+    pthread_mutex_lock(&(user->c_lock));
+    list_iterator_start(user->channel_names);
+    while(list_iterator_hasnext(user->channel_names)){
+          seek_arg->value = (char *)list_iterator_next(user->channel_names);
+          pthread_mutex_lock(&lock);
+          chan = (channel *)list_seek(server->chanlist, seek_arg);
+          pthread_mutex_unlock(&lock);
+          sendtochannel(server, chan, msg, user->nick);
+    }
+    list_iterator_stop(user->channel_names);
+    pthread_mutex_unlock(&(user->c_lock));
 }
 
 void logprint (logentry *tolog, chirc_server *ourserver, char *message){
