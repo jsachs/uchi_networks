@@ -251,9 +251,10 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
     int senderSocket = user->clientSocket;
     char *target_name = params[1];  //may be a nickname or channel name
     char logerror[MAXMSG];
-    chanuser *chansender;
     char *recipaway;
     char awaymsg[MAXMSG];
+    mychan *dummy = malloc(sizeof(mychan));
+    strcpy(dummy->name, target_name);
     
     //check that sender is registered
     if(!(strlen(user->nick) && strlen(user->user))){
@@ -364,12 +365,7 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
         }
         else{       //recipient is a channel
             //check that user is member of channel
-            seek_arg->field = CHANUSER;
-            seek_arg->value = user->nick;
-            pthread_mutex_lock(&(chanpt->chan_lock));  
-            chansender = (chanuser *)list_seek(chanpt->chan_users, seek_arg);
-            pthread_mutex_unlock(&(chanpt->chan_lock));
-            if (!chansender) {
+            if (!list_contains(user->my_chans, dummy)) {
                 constr_reply(ERR_CANNOTSENDTOCHAN, user, reply, server, target_name);
                 
                 pthread_mutex_lock(&(user->c_lock));
@@ -385,10 +381,8 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                 pthread_mutex_unlock(&(user->c_lock));
                 
             }
-            else{
+            else
                 sendtochannel(server, chanpt, priv_msg, user->nick);
-            }
-            
         }
     }
         
@@ -405,8 +399,9 @@ int chirc_handle_NOTICE(chirc_server *server,  //current server
     char notice[MAXMSG];
     char reply[MAXMSG];
     char *target_name = params[1];
-    chanuser *chansender;
     char logerror[MAXMSG];
+    mychan *dummy = malloc(sizeof(mychan));
+    strcpy(dummy->name, target_name);
     
     //get pointer to recipient
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
@@ -472,15 +467,9 @@ int chirc_handle_NOTICE(chirc_server *server,  //current server
     
     //if the recipient is a channel
     if (chanpt){
-        //check that user is member of channel
-        seek_arg->field = CHANUSER;
-        seek_arg->value = user->nick;
-        pthread_mutex_lock(&(chanpt->chan_lock));  
-        chansender = (chanuser *)list_seek(chanpt->chan_users, seek_arg);
-        pthread_mutex_unlock(&(chanpt->chan_lock));
         
         //only send if user is member of channel; otherwise do nothing
-        if (chansender) 
+        if (list_contains(user->my_chans, dummy)) 
             sendtochannel(server, chanpt, notice, user->nick);
     }
 

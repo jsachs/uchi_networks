@@ -183,12 +183,9 @@ int fun_seek(const void *el, const void *indicator){
     int fd;
     person *client = NULL;
     channel *chan  = NULL;
-    chanuser *cuser = NULL;
 
     if (field == 5)
         chan = (channel *)el;
-    else if (field ==  6)
-    	cuser = (chanuser *)el;
     else
 	client = (person *)el;
  
@@ -197,7 +194,8 @@ int fun_seek(const void *el, const void *indicator){
         fd = el_info->fd;
     else
         value = el_info->value;
-    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 6){
+    
+    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 5){
         perror("bad argument to fun_seek");
         return 0;
     }
@@ -231,16 +229,13 @@ int fun_seek(const void *el, const void *indicator){
                 return 1;
             else
                 return 0;
+            break;
 		case 5:
 	  	 	if (strcmp(chan->name, value) == 0)
 				return 1;
 	   		else
 				return 0;
-		case 6:
-			if(strcmp(cuser->nick, value) == 0)
-				return 1;
-			else
-				return 0;
+            break;
 	    default:
             return 0;
             break;
@@ -249,23 +244,18 @@ int fun_seek(const void *el, const void *indicator){
 
 void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender){
     int chanSocket;
-    el_indicator *seek_arg = malloc(sizeof(el_indicator));
-    chanuser *chanmemb;
     person *user;
-    seek_arg->field = NICK;
+    char *cname = chan->name;
+    mychan *dummy = malloc(sizeof(mychan));
+    strcpy(dummy->name, cname);
     
-    pthread_mutex_lock(&(chan->chan_lock));
-    list_iterator_start(chan->chan_users);
-    while(list_iterator_hasnext(chan->chan_users)){
-        chanmemb = (chanuser *)list_iterator_next(chan->chan_users);
-        seek_arg->value = chanmemb->nick;
-        pthread_mutex_lock(&lock);
-        user = (person *)list_seek(server->userlist, seek_arg);
-        pthread_mutex_unlock(&lock);
-        chanSocket = user->clientSocket;
-        //if sender argument is given, do not relay message back to sender
-        if(sender == NULL || (strcmp(sender, user->nick) != 0)){
-            pthread_mutex_lock(&(user->c_lock));
+    pthread_mutex_lock(&(lock));
+    list_iterator_start(server->userlist);
+    while(list_iterator_hasnext(server->userlist)){
+        user = (person *)list_iterator_next(server->userlist);
+        pthread_mutex_lock(&(user->c_lock));
+        if ((sender == NULL || strcmp(user->nick, sender) != 0) && list_contains(user->my_chans, dummy)){
+            chanSocket = user->clientSocket;
             if(send(chanSocket, msg, strlen(msg), 0) == -1)
             {
                 perror("Socket send() failed");
@@ -275,30 +265,46 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender)
                 pthread_mutex_unlock(&lock);
                 pthread_exit(NULL);
             }   
-            pthread_mutex_unlock(&(user->c_lock));
         }
+        pthread_mutex_unlock(&(user->c_lock));
     }
-    list_iterator_stop(chan->chan_users);
-    pthread_mutex_unlock(&(chan->chan_lock));
+    list_iterator_stop(server->userlist);
+    pthread_mutex_unlock(&lock);
 }
 
 //sends message to all channels a user is on. does not return message to sender
 void sendtoallchans(chirc_server *server, person *user, char *msg){
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     seek_arg->field = CHAN;
+    mychan *dummy;
     channel *chan;
     
     pthread_mutex_lock(&(user->c_lock));
-    list_iterator_start(user->channel_names);
-    while(list_iterator_hasnext(user->channel_names)){
-          seek_arg->value = (char *)list_iterator_next(user->channel_names);
+    list_iterator_start(user->my_chans);
+    while(list_iterator_hasnext(user->my_chans)){
+          dummy = (mychan *)list_iterator_next(user->my_chans);
+          seek_arg->value = dummy->name;
           pthread_mutex_lock(&lock);
           chan = (channel *)list_seek(server->chanlist, seek_arg);
           pthread_mutex_unlock(&lock);
           sendtochannel(server, chan, msg, user->nick);
     }
-    list_iterator_stop(user->channel_names);
+    list_iterator_stop(user->my_chans);
     pthread_mutex_unlock(&(user->c_lock));
+}
+
+int fun_compare(const void *a, const void *b){
+    if (a == NULL || b == NULL) {
+        printf("bad compare functions\n");
+        return -1;
+    }
+    mychan *chan1 = (mychan *)a;
+    mychan *chan2 = (mychan *)b;
+    
+    if (strcmp(chan1->name, chan2->name) == 0)
+        return 0;
+    else
+        return -1;
 }
 
 void logprint (logentry *tolog, chirc_server *ourserver, char *message){

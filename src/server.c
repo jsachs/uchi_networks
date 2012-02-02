@@ -31,6 +31,7 @@ extern pthread_mutex_t lock;
 
 void parse_message(int clientSocket, chirc_server *server);
 int fun_seek(const void *el, const void *indicator);
+int fun_compare(const void *a, const void *b);
 
 void *service_single_client(void *args) {
 	
@@ -57,10 +58,14 @@ void *service_single_client(void *args) {
         perror("list fail");
         exit(-1);
     }
+    if(list_attributes_comparator(&userchans, fun_compare) == -1){
+        perror("list fail");
+        exit(-1);
+    }
     clientname = wa->clientname;
     client.clientSocket = socket;
     client.address = clientname;
-    client.channel_names = &userchans;
+    client.my_chans = &userchans;
     
     free(wa);
 

@@ -10,7 +10,6 @@
 #define ADDRESS		3
 #define FD			4
 #define CHAN        5
-#define CHANUSER	6
 
 #define MAXMSG 512
 #define MAXPARAMS 16
@@ -49,7 +48,7 @@ typedef struct {
     char away[MAXMSG];  //away message
 	pthread_mutex_t c_lock;
     logentry *tolog;
-    list_t *channel_names;
+    list_t *my_chans;   //list of mychan structs
 } person;
 
 //parameter for seeker function
@@ -79,13 +78,12 @@ typedef struct {
     char topic[MAXMSG];
     char mode[5];
     pthread_mutex_t chan_lock;
-    list_t *chan_users;
 } channel;
 
 typedef struct {
-    char nick[MAXMSG];  //nick of channel members
-    char mode[5];       //member status modes 
-} chanuser;
+    char name[MAXMSG];  //name of channel
+    char mode[5];       //member status mode 
+} mychan;
 
 
 
