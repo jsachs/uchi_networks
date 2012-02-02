@@ -257,6 +257,8 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
     char *target_name = params[1];  //may be a nickname or channel name
     char logerror[MAXMSG];
     chanuser *chansender;
+    char *recipaway;
+    char awaymsg[MAXMSG];
     
     //check that sender is registered
     if(!(strlen(user->nick) && strlen(user->user))){
@@ -285,7 +287,7 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
     seek_arg->field = CHAN;
     channel *chanpt = (channel *)list_seek(server->chanlist, seek_arg);
     pthread_mutex_unlock(&lock);
-    
+
 
     
     
@@ -340,10 +342,30 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                 pthread_mutex_unlock(&lock);
                 pthread_exit(NULL);
             }
-        //write to log
-        //logprint(user->tolog, server, NULL);
-        //pthread_mutex_unlock(&loglock);
-        pthread_mutex_unlock(&(recippt->c_lock));
+            //check whether recipient is away
+            recipaway = strchr(recippt->mode, (int) 'a');
+            //write to log
+            //logprint(user->tolog, server, NULL);
+            //pthread_mutex_unlock(&loglock);
+            pthread_mutex_unlock(&(recippt->c_lock));
+            if (recipaway != NULL) {    //recipient is away
+                pthread_mutex_lock(&(recippt->c_lock));
+                snprintf(awaymsg, MAXMSG, "%s %s", recippt->nick, recippt->away);
+                pthread_mutex_unlock(&(recippt->c_lock));
+                constr_reply(RPL_AWAY, user, reply, server, awaymsg);
+                
+                pthread_mutex_lock(&(user->c_lock));
+                if(send(senderSocket, reply, strlen(reply), 0) == -1)
+                {
+                    perror("Socket send() failed");
+                    close(senderSocket);
+                    pthread_mutex_lock(&lock);
+                    list_delete(server->userlist, user);
+                    pthread_mutex_unlock(&lock);
+                    pthread_exit(NULL);
+                }
+                pthread_mutex_unlock(&(user->c_lock));
+            }
         }
         else{       //recipient is a channel
             //check that user is member of channel
@@ -978,7 +1000,7 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
 int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params){
     char reply[MAXMSG];
     int clientSocket = user->clientSocket;
-    char *away = strchr(user->mode, (int) 'a'); 
+    char *away = NULL;
     char *c;
     
     //check that sender is registered
@@ -998,6 +1020,10 @@ int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params){
         
         return 0;
     }
+    
+    //check whether sender is already away
+    if (strlen(user->mode) != 0)
+            away = strchr(user->mode, (int) 'a'); 
     
     //determine whether they're setting or removing away message
     if(strlen(params[1]) == 0){     //no away param, so removing away message
