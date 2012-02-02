@@ -36,7 +36,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name);
 void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender);
 void channel_destroy(chirc_server *server, channel *chan);
 void user_exit(chirc_server *server, person *user);
-
+void send_names(chirc_server *server, channel *chan, person *user);
 
 //all the handlers
 int chirc_handle_NICK(chirc_server *server, person *user, chirc_message params);
@@ -651,7 +651,7 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
         pthread_mutex_unlock(&(user->c_lock));
         
         //WHOISOPERATOR
-        if(strchr(whoispt->mode, "o") != NULL){
+        if(strchr(whoispt->mode, (int) 'o') != NULL){
             constr_reply(RPL_WHOISOPERATOR, user, reply, server, target_nick);
             pthread_mutex_lock(&(user->c_lock));
             if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -1031,7 +1031,88 @@ int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
 
 int chirc_handle_NAMES(chirc_server *server, person *user, chirc_message params)
 {
+    int buff;
+    int clientSocket = user->clientSocket;
+    int first = 1;
+    char reply[MAXMSG];
+    char antisocial[MAXMSG];  //list of people not on channels
+    channel *chan;
+    person *someone;
+    el_indicator *seek_arg = malloc(sizeof(seek_arg));
+    seek_arg->field = CHAN;
     
+    
+    //check that sender is registered
+    if(!(strlen(user->nick) && strlen(user->user))){
+        constr_reply(ERR_NOTREGISTERED, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            user_exit(server, user);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        free(seek_arg);
+        return 0;
+    }
+    
+    if(strlen(params[1]) == 0){  //no channel given
+        //iterate through all channels
+        pthread_mutex_lock(&lock);
+        list_iterator_start(server->chanlist);
+        while (list_iterator_hasnext(server->chanlist)) {
+            chan = (channel *)list_iterator_next(server->chanlist);
+            pthread_mutex_unlock(&lock);
+            send_names(server, chan, user);
+            pthread_mutex_lock(&lock);
+        }
+        list_iterator_stop(server->chanlist);
+        
+        strcpy(antisocial, "* * :");
+        //iterate through users not on any channel
+        list_iterator_start(server->userlist);
+        while (list_iterator_hasnext(server->userlist) && MAXMSG - strlen(antisocial) > 1) {
+            someone = (person *)list_iterator_next(server->userlist);
+            pthread_mutex_lock(&(someone->c_lock));
+            if(list_size(someone->my_chans) == 0){
+                if (!first) {
+                    strcat(antisocial, " ");
+                }
+                first = 0;
+                buff = MAXMSG - strlen(antisocial);
+                strncat(antisocial, someone->nick, buff);
+                pthread_mutex_unlock(&(someone->c_lock));
+            }
+        }
+        list_iterator_stop(server->userlist);
+        pthread_mutex_unlock(&lock);
+        
+        constr_reply(RPL_NAMREPLY, user, reply, server, antisocial);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1){
+            perror("Socket send() failed");
+            user_exit(server, user);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+    }
+    else{   //only give NAMES reply for one channel
+        seek_arg->value = params[1];
+        pthread_mutex_lock(&lock);
+        chan = (channel *)list_seek(server->chanlist, seek_arg);
+        pthread_mutex_unlock(&lock);
+        send_names(server, chan, user);
+    }
+    
+    //send RPL_ENDOFNAMES
+    constr_reply(RPL_ENDOFNAMES, user, reply, server, "*");
+    if(send(clientSocket, reply, strlen(reply), 0) == -1){
+        perror("Socket send() failed");
+        user_exit(server, user);
+    }
+    pthread_mutex_unlock(&(user->c_lock));
+    
+    free(seek_arg);
     
     return 0;
 }

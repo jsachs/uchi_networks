@@ -10,6 +10,7 @@
 #define ADDRESS		3
 #define FD			4
 #define CHAN        5
+#define USERCHAN    6
 
 
 #define MAXMSG 512

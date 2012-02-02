@@ -28,6 +28,7 @@ extern pthread_mutex_t lock;
 
 int chirc_handle_MOTD(chirc_server *server, person *user, chirc_message params);
 int chirc_handle_LUSERS(chirc_server *server, person *user, chirc_message params);
+void user_exit(chirc_server *server, person *user);
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra) {
     int replcode = strtol(code, NULL, 10);
@@ -72,13 +73,13 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 255: // RPL_LUSERNAME
             sprintf(replmsg, ":I have %s clients and 1 servers", extra);
             break;
-        case 301:
+        case 301: // RPL_AWAY
             strcpy(replmsg, extra);
             break;
-        case 305:
+        case 305: //RPL_UNAWAY
             strcpy(replmsg, ":You are no longer marked as being away");
             break;
-        case 306:
+        case 306: //RPL_NOWAWAY
             strcpy(replmsg, ":You have been marked as being away");
             break;
         case 311: // RPL_WHOISUSER
@@ -87,7 +88,7 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 312: // RPL_WHOISSERVER
             sprintf(replmsg, "%s", extra);
             break;
-        case 313:
+        case 313: // RPL_WHOISOPERATOR
             sprintf(replmsg, "%s :is an IRC operator", extra);
             break;
         case 318: // RPL_ENDWHOIS
@@ -115,14 +116,14 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, ":- End of MOTD command");
             break;
         case 353: // RPL_NAMREPLY
-        	sprintf(replmsg, "= #foobar :foobar1 foobar2 foobar3");
+        	strcpy(replmsg, extra);
         	break;
         case 366: // RPL_ENDOFNAMES
-        	sprintf(replmsg, "#foobar :End of NAMES list");
+        	sprintf(replmsg, "%s :End of NAMES list", extra);
         	break;
         case 381: // RPL_YOUREOPER
-                sprintf(replmsg, ":You are now an IRC operator");
-                break;
+            sprintf(replmsg, ":You are now an IRC operator");
+            break;
         case 401: // ERR_NOSUCHNICK
             sprintf(replmsg, "%s :No such nick/channel", extra);
             break;
@@ -161,6 +162,7 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
     return;
 }
 
+//send all registration replies
 void do_registration(person *client, chirc_server *server){
     int i;
     int clientSocket = client->clientSocket;
@@ -181,19 +183,63 @@ void do_registration(person *client, chirc_server *server){
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
             perror("Socket send() failed");
-            close(clientSocket);
-            pthread_mutex_lock(&lock);
-            list_delete(server->userlist, client);
-            pthread_mutex_unlock(&lock);
-            free(client->address);
-            free(client);
-            pthread_exit(NULL);
+            user_exit(server, client);
         }
         pthread_mutex_unlock(&(client->c_lock));
     }
     
     chirc_handle_LUSERS(server, client, NULL);
     chirc_handle_MOTD(server, client, NULL);
+}
+
+//send RPL_NAMREPLY for given channel to given user
+void send_names(chirc_server *server, channel *chan, person *user){
+    int clientSocket = user->clientSocket;
+    char chanusers[MAXMSG];
+    char reply[MAXMSG];
+    person *someuser;
+    int buff;
+    mychan *userchan;
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    int first = 1;
+    
+    seek_arg->field = CHAN;
+    
+    pthread_mutex_lock(&(chan->chan_lock));
+    sprintf(chanusers, "= %s :", chan->name);
+    seek_arg->value = chan->name;           //may be safer to use strcpy here, but need to allocate space for seek_arg->value
+    pthread_mutex_unlock(&(chan->chan_lock));
+    
+    pthread_mutex_lock(&lock);
+    list_iterator_start(server->userlist);
+    while(list_iterator_hasnext(server->userlist) && strlen(chanusers) < MAXMSG - 3){   //must be 3 less than MAXMSG so adding space and two mode chars won't cause overflow
+        someuser = list_iterator_next(server->userlist);
+        pthread_mutex_lock(&(someuser->c_lock));
+        userchan = (mychan *)list_seek(someuser->my_chans, seek_arg);
+        if (userchan != NULL) { //user is a member of chan
+            if(!first)
+                strcat(chanusers, " ");
+            //let's have member status modes marked with @ and + instead of o and v. That will make life easier.
+            strcat(chanusers, userchan->mode);
+            buff = MAXMSG - strlen(reply);
+            strncat(chanusers, someuser->nick, buff);
+            first = 0;
+        }
+        pthread_mutex_unlock(&(someuser->c_lock));
+    }
+    list_iterator_stop(server->userlist);
+    pthread_mutex_unlock(&lock);
+    
+    constr_reply(RPL_NAMREPLY, user, reply, server, chanusers);
+    pthread_mutex_lock(&(user->c_lock));
+    if(send(clientSocket, reply, strlen(reply), 0) == -1){
+        perror("Socket send() failed");
+        user_exit(server, user);
+    }
+    pthread_mutex_unlock(&(user->c_lock));
+                             
+    free(seek_arg);
+    return;
 }
 
 int fun_seek(const void *el, const void *indicator){
@@ -209,19 +255,29 @@ int fun_seek(const void *el, const void *indicator){
     int fd;
     person *client = NULL;
     channel *chan  = NULL;
-
-    if (field == 5)
-        chan = (channel *)el;
-    else
-	client = (person *)el;
- 
+    mychan *my_chan = NULL;
     
-    if (field == 4)
-        fd = el_info->fd;
-    else
-        value = el_info->value;
+    //unpack arguments appropriately
+    switch (field) {
+        case 4:
+            fd = el_info->fd;
+            client = (person *)el;
+            break;
+        case 5:
+            chan = (channel *)el;
+            value = el_info->value;
+            break;
+        case 6:
+            my_chan = (mychan *)el;
+            value = el_info->value;
+            break;
+        default:
+            client = (person *)el;
+            value = el_info->value;
+            break;
+    }
     
-    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 5){
+    if ((field != 4 && strlen(value) == 0) || field < 0 || field > 6){
         perror("bad argument to fun_seek");
         return 0;
     }
@@ -262,6 +318,12 @@ int fun_seek(const void *el, const void *indicator){
 	   		else
 				return 0;
             break;
+        case 6:
+            if (strcmp(my_chan->name, value) == 0)
+                return 1;
+            else
+                return 0;
+            break;
 	    default:
             return 0;
             break;
@@ -285,11 +347,7 @@ void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender)
             if(send(chanSocket, msg, strlen(msg), 0) == -1)
             {
                 perror("Socket send() failed");
-                close(chanSocket);
-                pthread_mutex_lock(&lock);
-                list_delete(server->userlist, user);
-                pthread_mutex_unlock(&lock);
-                pthread_exit(NULL);
+                user_exit(server, user);
             }   
             pthread_mutex_unlock(&(user->c_lock));
         }
