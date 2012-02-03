@@ -974,16 +974,8 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
     // if there is a topic parameter, check if the user is operator
     // if they are, they can set the topic
     if(params[2][0] != '\0') {
-    	// check if channel is moderated
-	if(strchr(channelpt->mode, (int)'t') != NULL) {
-                seek_arg->field = CHAN;      // used in list seek
-                seek_arg->value = cname;   // used in list seek
-                pthread_mutex_lock(&lock);
-                channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
-                pthread_mutex_unlock(&lock);
-                
+    	// check if channel is moderated             
 		if((strchr(user->mode,(int)'@') == NULL) || (strchr(user->mode,(int)'@') == NULL)) return 0;
-        }
         
         // if topic is changed, relay it to the channel
     	strcpy(channelpt->topic, params[2]);
