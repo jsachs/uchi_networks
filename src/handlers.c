@@ -651,7 +651,7 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
         pthread_mutex_unlock(&(user->c_lock));
         
         //WHOISOPERATOR
-        if(strchr(whoispt->mode, (int) 'o') != NULL){
+        if(strchr(whoispt->mode, (int)'@') != NULL){
             constr_reply(RPL_WHOISOPERATOR, user, reply, server, target_nick);
             pthread_mutex_lock(&(user->c_lock));
             if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -954,7 +954,6 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
     pthread_mutex_lock(&lock);
     channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     pthread_mutex_unlock(&lock);
-    free(seek_arg);
     
     // check to make sure the user is in the channel
     if (!list_contains(user->my_chans, dummy)){
@@ -966,15 +965,34 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
             user_exit(server, user);
         }
         pthread_mutex_unlock(&(user->c_lock));
+        free(seek_arg);
         free(dummy);
         free(cname);
         return 0;
     }
     
-    // if there is a topic parameter, set the topic
-    // eventually, only the operator can do this
-    if(params[2][0] != '\0')
+    // if there is a topic parameter, check if the user is operator
+    // if they are, they can set the topic
+    if(params[2][0] != '\0') {
+    	// check if channel is moderated
+	if(strchr(channelpt->mode, (int)'t') != NULL) {
+                seek_arg->field = CHAN;      // used in list seek
+                seek_arg->value = cname;   // used in list seek
+                pthread_mutex_lock(&lock);
+                channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
+                pthread_mutex_unlock(&lock);
+                
+		if((strchr(user->mode,(int)'@') == NULL) || (strchr(user->mode,(int)'@') == NULL)) return 0;
+        }
+        
+        // if topic is changed, relay it to the channel
     	strcpy(channelpt->topic, params[2]);
+    	snprintf(reply,MAXMSG-1, ":%s!%s@%s TOPIC %s %s",user->nick,user->user,user->address,
+    	                                                 cname,channelpt->topic);
+    	strcat(reply, "\r\n");
+        sendtochannel(server, channelpt, reply, NULL);
+    }
+    	
     
     // then determine the correct reply
     if(channelpt->topic[0] == '\0'){
@@ -988,7 +1006,8 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
         pthread_mutex_unlock(&(user->c_lock));
     }
     else {
-    	constr_reply(RPL_TOPIC, user, reply, server, cname);
+    	snprintf(reply,MAXMSG-1, "%s %s", cname, channelpt->topic);
+        constr_reply(RPL_TOPIC, user, reply, server, NULL);
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
@@ -997,6 +1016,7 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
         }
         pthread_mutex_unlock(&(user->c_lock));
     }
+    free(seek_arg);
     free(dummy);
     free(cname);
     return 0;
@@ -1129,6 +1149,35 @@ int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params)
 
 int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
 {
+    char reply[MAXMSG];
+    int clientSocket = user->clientSocket;
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    
+    // member status modes
+    if(params[3][0] != '\0'){
+    
+    return 0;
+    }
+
+    // channel modes
+    seek_arg->field = CHAN;      
+    seek_arg->value = params[1];   
+    pthread_mutex_lock(&lock);
+    channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
+    pthread_mutex_unlock(&lock);
+
+    if(channelpt != NULL){
+    
+
+
+
+
+    return 0;
+    }
+
+    // user modes
+        
+
     return 0;
 }
 
@@ -1150,6 +1199,8 @@ int chirc_handle_OPER(chirc_server *server, person *user, chirc_message params)
     }
     else {
         // give the person operator power first
+        if(strchr(user->mode, (int)'@') == NULL) // check to make sure not already operator
+            strcat(user->mode, "@");
 
         // then send them their message
         constr_reply(RPL_YOUREOPER, user, reply, server, NULL);

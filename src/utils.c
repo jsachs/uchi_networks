@@ -104,7 +104,7 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         	sprintf(replmsg, "%s :No topic is set", extra);
         	break;
         case 332: // RPL_TOPIC
-        	sprintf(replmsg, "%s :This is the topic", extra);
+        	sprintf(replmsg, "%s", reply);
         	break;
         case 375: // RPL_MOTDSTART
             sprintf(replmsg, ":- %s Message of the day - ", servname);
