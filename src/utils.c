@@ -153,6 +153,13 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             break;
         case 464: // ERR_PASSWDMISMATCH
             sprintf(replmsg, ":Password incorrect");
+            break;
+        case 501: // ERR_UMODEUNKNOWN
+            sprintf(replmsg, "Unknown MODE flag");
+            break;
+        case 502: // ERR_USERSDONTMATCH
+            sprintf(replmsg, "Cannot change mode for other users");
+            break;
         
         default:
             break;
