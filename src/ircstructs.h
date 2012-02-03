@@ -8,8 +8,8 @@
 #define USER 		1
 #define FULLNAME 	2
 #define ADDRESS		3
-#define FD			4
-#define CHAN        5
+#define FD		4
+#define CHAN            5
 
 
 #define MAXMSG 512

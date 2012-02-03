@@ -954,7 +954,6 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
     pthread_mutex_lock(&lock);
     channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     pthread_mutex_unlock(&lock);
-    free(seek_arg);
     
     // check to make sure the user is in the channel
     if (!list_contains(user->my_chans, dummy)){
@@ -966,6 +965,7 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
             user_exit(server, user);
         }
         pthread_mutex_unlock(&(user->c_lock));
+        free(seek_arg);
         free(dummy);
         free(cname);
         return 0;
@@ -976,7 +976,13 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
     if(params[2][0] != '\0') {
     	// check if channel is moderated
 	if(strchr(channelpt->mode, (int)'t') != NULL) {
-		if(strchr(user->mode, (int)'@') == NULL) return 0;
+                seek_arg->field = CHAN;      // used in list seek
+                seek_arg->value = cname;   // used in list seek
+                pthread_mutex_lock(&lock);
+                channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
+                pthread_mutex_unlock(&lock);
+                
+		if((strchr(user->mode,(int)'@') == NULL) || (strchr(user->mode,(int)'@') == NULL)) return 0;
         }
         
         // if topic is changed, relay it to the channel
@@ -1010,6 +1016,7 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
         }
         pthread_mutex_unlock(&(user->c_lock));
     }
+    free(seek_arg);
     free(dummy);
     free(cname);
     return 0;
@@ -1056,11 +1063,34 @@ int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params)
 
 int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
 {
+    char reply[MAXMSG];
+    int clientSocket = user->clientSocket;
+    el_indicator *seek_arg = malloc(sizeof(el_indicator));
+    
+    // member status modes
+    if(params[3][0] != '\0'){
+    
+    return 0;
+    }
+
+    // channel modes
+    seek_arg->field = CHAN;      
+    seek_arg->value = params[1];   
+    pthread_mutex_lock(&lock);
+    channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
+    pthread_mutex_unlock(&lock);
+
+    if(channelpt != NULL){
     
 
 
 
 
+    return 0;
+    }
+
+    // user modes
+        
 
     return 0;
 }
