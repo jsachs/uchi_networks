@@ -651,7 +651,7 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
         pthread_mutex_unlock(&(user->c_lock));
         
         //WHOISOPERATOR
-        if(strchr(whoispt->mode, "o") != NULL){
+        if(strchr(whoispt->mode, (int)'@') != NULL){
             constr_reply(RPL_WHOISOPERATOR, user, reply, server, target_nick);
             pthread_mutex_lock(&(user->c_lock));
             if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -974,9 +974,12 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
     // if there is a topic parameter, check if the user is operator
     // if they are, they can set the topic
     if(params[2][0] != '\0') {
-    	// check operator
-    	
-    	// if topic is changed, relay it to the channel
+    	// check if channel is moderated
+	if(strchr(channelpt->mode, (int)'t') != NULL) {
+		if(strchr(user->mode, (int)'@') == NULL) return 0;
+        }
+        
+        // if topic is changed, relay it to the channel
     	strcpy(channelpt->topic, params[2]);
     	snprintf(reply,MAXMSG-1, ":%s!%s@%s TOPIC %s %s",user->nick,user->user,user->address,
     	                                                 cname,channelpt->topic);
@@ -1053,6 +1056,12 @@ int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params)
 
 int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
 {
+    
+
+
+
+
+
     return 0;
 }
 
@@ -1074,6 +1083,8 @@ int chirc_handle_OPER(chirc_server *server, person *user, chirc_message params)
     }
     else {
         // give the person operator power first
+        if(strchr(user->mode, (int)'@') == NULL) // check to make sure not already operator
+            strcat(user->mode, "@");
 
         // then send them their message
         constr_reply(RPL_YOUREOPER, user, reply, server, NULL);

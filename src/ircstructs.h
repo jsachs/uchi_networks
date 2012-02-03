@@ -35,11 +35,11 @@ typedef struct {
 	char  user[MAXMSG];
 	char  fullname[MAXMSG];
 	char* address;
-    char mode[5];
-    char away[MAXMSG];  //away message
+        char mode[5];
+        char away[MAXMSG];  //away message
 	pthread_mutex_t c_lock;
-    list_t *my_chans;   //list of mychan structs
-    pthread_t tid;
+       list_t *my_chans;   //list of mychan structs
+       pthread_t tid;
 } person;
 
 //parameter for seeker function
