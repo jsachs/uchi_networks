@@ -441,6 +441,7 @@ void user_exit(chirc_server *server, person *user){         //removes all inform
     
     pthread_mutex_lock(&lock);
     list_delete(server->userlist, user);
+    server->numregistered--;
     pthread_mutex_unlock(&lock);
     
     pthread_mutex_unlock(&(user->c_lock));

@@ -1101,7 +1101,12 @@ int chirc_handle_NAMES(chirc_server *server, person *user, chirc_message params)
         pthread_mutex_lock(&lock);
         chan = (channel *)list_seek(server->chanlist, seek_arg);
         pthread_mutex_unlock(&lock);
-        send_names(server, chan, user);
+        if(chan != NULL)
+            send_names(server, chan, user);
+        else{
+            free(seek_arg);
+            return(0);
+        }
     }
     
     //send RPL_ENDOFNAMES
