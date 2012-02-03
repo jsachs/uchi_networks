@@ -939,7 +939,7 @@ int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params){
 
 int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
 {
-	char reply[MAXMSG];
+    char reply[MAXMSG];
     int clientSocket = user->clientSocket;
     char *cname = malloc(strlen(params[1]));
     strcpy(cname, params[1]);
