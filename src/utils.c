@@ -106,6 +106,12 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 332: // RPL_TOPIC
         	sprintf(replmsg, "%s", reply);
         	break;
+        case 353: // RPL_NAMREPLY
+        	strcpy(replmsg, extra);
+        	break;
+        case 366: // RPL_ENDOFNAMES
+        	sprintf(replmsg, "%s :End of NAMES list", extra);
+        	break;
         case 375: // RPL_MOTDSTART
             sprintf(replmsg, ":- %s Message of the day - ", servname);
             break;
@@ -115,12 +121,6 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 376: // RPL_ENDOFMOTD
             sprintf(replmsg, ":- End of MOTD command");
             break;
-        case 353: // RPL_NAMREPLY
-        	strcpy(replmsg, extra);
-        	break;
-        case 366: // RPL_ENDOFNAMES
-        	sprintf(replmsg, "%s :End of NAMES list", extra);
-        	break;
         case 381: // RPL_YOUREOPER
             sprintf(replmsg, ":You are now an IRC operator");
             break;
@@ -153,7 +153,10 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             break;
         case 464: // ERR_PASSWDMISMATCH
             sprintf(replmsg, ":Password incorrect");
-        
+            break;
+        case 482:
+            sprintf(replmsg, "%s :You're not a channel operator", extra);
+            break;
         default:
             break;
     }
