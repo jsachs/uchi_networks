@@ -1176,7 +1176,7 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
         pthread_mutex_unlock(&(user->c_lock));
         return 0;
     }
-    if(strchr(params[2][1],"ao")==NULL){ // not a valid mode
+    if(strpbrk(params[2], "ao") == NULL){ // not a valid mode
         constr_reply(ERR_UMODEUNKNOWNFLAG, user, reply, server, NULL);
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -1187,11 +1187,11 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
         pthread_mutex_unlock(&(user->c_lock));
         return 0;
     }
-    if(strcmp(params[2][0],"+")==0){ // add operator priv
-        strcat(user->mode, params[2][1]);
+    if(params[2][0] == '+'){ // add operator priv
+        //strcat(user->mode, params[2][1]);
         return 0;
     }
-    if(strcmp(params[2][0],"-")==0){
+    if(params[2][0] == '-'){
         // do something to remove the priv
         return 0;
     }
