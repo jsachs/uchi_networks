@@ -1168,7 +1168,8 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
     }
 
     // user modes
-        
+    if(strcmp(params[2][0], "+") == 0)    // adding a mode
+    	strcat(user->mode, params[2][1]);
 
     return 0;
 }
