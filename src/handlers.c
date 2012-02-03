@@ -975,7 +975,7 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
     // if they are, they can set the topic
     if(params[2][0] != '\0') {
     	// check if channel is moderated             
-		if((strchr(user->mode,(int)'@') == NULL) || (strchr(user->mode,(int)'@') == NULL)) return 0;
+	//if(strchr(user->mode,(int)'@') == NULL) return 0;
         
         // if topic is changed, relay it to the channel
     	strcpy(channelpt->topic, params[2]);
