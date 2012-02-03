@@ -31,6 +31,7 @@ extern pthread_mutex_t loglock;
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
 void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender);
+void send_names(chirc_server *server, channel *chan, person *user);
 int fun_seek(const void *el, const void *indicator);
 void user_exit(chirc_server *server, person *user);
 
@@ -85,7 +86,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     strcpy(newchan->name, cname);
     newchan->mode[0] = '\0';
     if(oper)
-        strcat(newchan->mode, "o");
+        strcat(newchan->mode, "@");
     pthread_mutex_lock(&(client->c_lock));
     list_append(client->my_chans, newchan);
     pthread_mutex_unlock(&(client->c_lock));
@@ -102,28 +103,26 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     // if the channel has a topic, send RPL_TOPIC
     
     if(channelpt->topic[0] != '\0'){
-    	snprintf(reply,MAXMSG-1, "%s %s", cname, channelpt->topic);
+        snprintf(reply, MAXMSG-1, "%s %s", cname, channelpt->topic);
         constr_reply(RPL_TOPIC, client, reply, server, NULL);
         pthread_mutex_lock(&(client->c_lock));
-        if(send(clientSocket, reply, strlen(reply), 0) == -1)
-        {
+        if (send(clientSocket, reply, strlen(reply), 0) == -1) {
             perror("Socket send() failed");
             user_exit(server, client);
         }
         pthread_mutex_unlock(&(client->c_lock));
     }
     
+    send_names(server, channelpt, client);
     
-    for (i = 0; i < 2; i++){
-        constr_reply(replies[i], client, reply , server, NULL);
-        pthread_mutex_lock(&(client->c_lock));
-        if(send(clientSocket, reply, strlen(reply), 0) == -1)
-        {
-            perror("Socket send() failed");
-            user_exit(server, client);
-        }
-        pthread_mutex_unlock(&(client->c_lock));
+    constr_reply(RPL_ENDOFNAMES, client, reply, server, cname); //ie channel name as final parameter
+    pthread_mutex_lock(&(client->c_lock));
+    if(send(clientSocket, reply, strlen(reply), 0) == -1){
+        perror("Socket send() failed");
+        user_exit(server, client);
     }
+    pthread_mutex_unlock(&(client->c_lock)); 
+    
     free(dummy);
 }
 
