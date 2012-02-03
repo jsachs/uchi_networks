@@ -157,6 +157,12 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 482:
             sprintf(replmsg, "%s :You're not a channel operator", extra);
             break;
+        case 501: // ERR_UMODEUNKNOWN
+            sprintf(replmsg, "Unknown MODE flag");
+            break;
+        case 502: // ERR_USERSDONTMATCH
+            sprintf(replmsg, "Cannot change mode for other users");
+            break;
         default:
             break;
     }
