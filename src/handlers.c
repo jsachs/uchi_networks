@@ -88,6 +88,7 @@ void handle_chirc_message(chirc_server *server, person *user, chirc_message para
     else if (strcmp(command, "NAMES") == 0)   chirc_handle_NAMES(server, user, params);
     else if (strcmp(command, "MODE") == 0)   chirc_handle_MODE(server, user, params);
     else if (strcmp(command, "OPER") == 0)   chirc_handle_OPER(server, user, params);
+    else if (strcmp(command, "LIST") == 0)   chirc_handle_LIST(server, user, params);
     
     else chirc_handle_UNKNOWN(server, user, params);
 }
@@ -1018,6 +1019,7 @@ int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
     char reply[MAXMSG];
     int clientSocket = user->clientSocket;
     char *cname = malloc(strlen(params[1]));
+    char extra[MAXMSG];
     strcpy(cname, params[1]);
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     
@@ -1029,13 +1031,61 @@ int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
     	channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     	pthread_mutex_unlock(&lock);
 		
-	snprintf(reply,MAXMSG-1,":%s!%s@%s PART %s %s",user->nick,user->user,user->address,params[1],params[2]);
-    	strcat(reply, "\r\n"); // tests are not seeing this for some reason
-    	}
+		sprintf(extra,"%s %i %s", channelpt->name, channelpt->numusers, channelpt->topic);
+		constr_reply(RPL_LIST, user, reply, server, extra);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            user_exit(server, user);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        constr_reply(RPL_LISTEND, user, reply, server, NULL);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            user_exit(server, user);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        free(seek_arg);
+        free(cname);
+        return 0;
+    }
     	
-    	// otherwise, iterate over all channels
+    pthread_mutex_lock(&lock);
+    list_iterator_start(server->chanlist);
+    while (list_iterator_hasnext(server->chanlist)) {
+        channel *channelpt = (channel *)list_iterator_next(server->chanlist);
+        pthread_mutex_unlock(&lock);
+        
+        sprintf(extra,"%s %i %s", channelpt->name, channelpt->numusers, channelpt->topic);
+		constr_reply(RPL_LIST, user, reply, server, extra);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            user_exit(server, user);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        
+        pthread_mutex_lock(&lock);
+    }
+    list_iterator_stop(server->chanlist);
+    pthread_mutex_unlock(&lock);
     
-    
+    constr_reply(RPL_LISTEND, user, reply, server, NULL);
+    pthread_mutex_lock(&(user->c_lock));
+    if(send(clientSocket, reply, strlen(reply), 0) == -1)
+    {
+        perror("Socket send() failed");
+        user_exit(server, user);
+    }
+    pthread_mutex_unlock(&(user->c_lock));
+        
+    free(seek_arg);
 	free(cname);
 	return 0;
 }
