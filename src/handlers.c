@@ -334,6 +334,28 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                 pthread_mutex_unlock(&(user->c_lock));
                 
             }
+            
+            // check that the sender has the appropriate mode for channel
+            if(strchr(chanpt->mode,'m') != NULL) {
+            	if(strchr(user->mode,'o') == NULL) {
+            		seek_arg->field = USERCHAN;      
+    				seek_arg->value = params[1];   
+   					pthread_mutex_lock(&lock);
+    				mychan *mychanpt = (mychan *)list_seek(user->my_chans, seek_arg);
+    				pthread_mutex_unlock(&lock);
+    				if( (strchr(mychanpt->mode,'o')==NULL) && (strchr(mychanpt->mode,'v')==NULL)) {
+    					constr_reply(ERR_CANNOTSENDTOCHAN, user, reply, server, target_name);
+                
+                		pthread_mutex_lock(&(user->c_lock));
+                		if(send(senderSocket, reply, strlen(reply), 0) == -1)
+                		{
+                		    perror("Socket send() failed");
+                		    user_exit(server, user);
+                		}
+                		pthread_mutex_unlock(&(user->c_lock));
+                	}
+            	}
+            }
             else
                 sendtochannel(server, chanpt, priv_msg, user->nick);
         }
@@ -1031,7 +1053,9 @@ int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
     	channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     	pthread_mutex_unlock(&lock);
 		
-		sprintf(extra,"%s %i %s", channelpt->name, channelpt->numusers, channelpt->topic);
+		if(channelpt->topic[0] == '\0') sprintf(extra,"%s %i :", channelpt->name, channelpt->numusers);
+		else sprintf(extra,"%s %i %s", channelpt->name, channelpt->numusers, channelpt->topic);
+		
 		constr_reply(RPL_LIST, user, reply, server, extra);
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -1061,7 +1085,9 @@ int chirc_handle_LIST(chirc_server *server, person *user, chirc_message params)
         channel *channelpt = (channel *)list_iterator_next(server->chanlist);
         pthread_mutex_unlock(&lock);
         
-        sprintf(extra,"%s %i %s", channelpt->name, channelpt->numusers, channelpt->topic);
+        if(channelpt->topic[0] == '\0') sprintf(extra,"%s %i :", channelpt->name, channelpt->numusers);
+		else sprintf(extra,"%s %i %s", channelpt->name, channelpt->numusers, channelpt->topic);
+		
 		constr_reply(RPL_LIST, user, reply, server, extra);
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
