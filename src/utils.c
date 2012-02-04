@@ -154,6 +154,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 464: // ERR_PASSWDMISMATCH
             sprintf(replmsg, ":Password incorrect");
             break;
+        case 472:
+            strcpy(replmsg, extra);
+            break;
         case 482:
             sprintf(replmsg, "%s :You're not a channel operator", extra);
             break;
@@ -228,8 +231,10 @@ void send_names(chirc_server *server, channel *chan, person *user){
         if (userchan != NULL) { //user is a member of chan
             if(!first)
                 strcat(chanusers, " ");
-            //let's have member status modes marked with @ and + instead of o and v. That will make life easier.
-            strcat(chanusers, userchan->mode);
+            if(strchr(userchan->mode, (int) 'o') != NULL)
+                strcat(chanusers, "@");
+            if(strchr(userchan->mode, (int) 'v') != NULL)
+                strcat(chanusers, "+");
             buff = MAXMSG - strlen(reply);
             strncat(chanusers, someuser->nick, buff);
             first = 0;

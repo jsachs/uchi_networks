@@ -861,7 +861,6 @@ int chirc_handle_PART(chirc_server *server, person *user, chirc_message params)
     return 0;
 }
 
-//needs to check that you're registered first
 int chirc_handle_AWAY(chirc_server *server, person *user, chirc_message params){
     char reply[MAXMSG];
     int clientSocket = user->clientSocket;
@@ -1142,26 +1141,119 @@ int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params)
 int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
 {
     char reply[MAXMSG];
+    char reply_param[MAXMSG];
+    char *delmode;
+    char *c;
+    person *modeuser;
+    channel *channelpt;
+    mychan *userchan;
+    mychan *dummy;
+    int len;
     int clientSocket = user->clientSocket;
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     
     // member status modes
     if(params[3][0] != '\0'){
-    
-    return 0;
+        //does the channel exist?
+        seek_arg->field = CHAN;      
+        seek_arg->value = params[1];   
+        pthread_mutex_lock(&lock);
+        channelpt = (channel *)list_seek(server->chanlist, seek_arg);
+        pthread_mutex_unlock(&lock);
+        
+        if (channelpt == NULL) {                                                    //no, the channel does not exist
+            constr_reply(ERR_NOSUCHCHANNEL, user, reply, server, params[1]);
+            pthread_mutex_lock(&(user->c_lock));
+            if(send(clientSocket, reply, strlen(reply), 0) == -1)
+            {
+                perror("Socket send() failed");
+                user_exit(server, user); 
+            }
+            pthread_mutex_unlock(&(user->c_lock));
+        }
+        else{                                                                       //yes, the channel exists
+                                                                                    //are you a channel operator or IRC operator?
+            seek_arg->field = USERCHAN;
+            //value is already params[1]
+            pthread_mutex_lock(&(user->c_lock));
+            userchan = (mychan *)list_seek(user->my_chans, seek_arg);
+            pthread_mutex_unlock(&(user->c_lock));
+            if (userchan == NULL || (strchr(user->mode, (int) 'o') == NULL && strchr(userchan->mode, (int) 'o') == NULL)) {    //no, you're not a chanop or IRC op
+                constr_reply(ERR_CHANOPRIVSNEEDED, user, reply, server, params[1]);
+                if(send(clientSocket, reply, strlen(reply), 0) == -1)
+                {
+                    perror("Socket send() failed");
+                    user_exit(server, user); 
+                }
+                pthread_mutex_unlock(&(user->c_lock));
+            }
+            else{                                                                   //yes, you're a chanop or IRC op
+                                                                                    //does user exist? if so, are they on the channel?
+                dummy = malloc(sizeof(mychan));
+                strcpy(dummy->name, params[1]);
+                seek_arg->field = USER;
+                seek_arg->value = params[3];
+                pthread_mutex_lock(&lock);
+                modeuser = (person *)list_seek(server->userlist, seek_arg);
+                pthread_mutex_unlock(&lock);
+                if (modeuser == NULL || (!list_contains(modeuser->my_chans, dummy))){  //no, the user is not on the channel
+                    sprintf(reply_param, "%s %s", params[3], params[1]);
+                    constr_reply(ERR_USERNOTINCHANNEL, user, reply, server, reply_param);
+                    if(send(clientSocket, reply, strlen(reply), 0) == -1)
+                    {
+                        perror("Socket send() failed");
+                        user_exit(server, user); 
+                    }
+                    pthread_mutex_unlock(&(user->c_lock));
+                }
+                else{                                                                //yes, the user exists
+                                                                                     //is the mode string valid?
+                    if(strpbrk(params[2], "ov") != NULL){                            //yes, the mode string is valid
+                        pthread_mutex_lock(&(modeuser->c_lock));
+                        userchan = (mychan *)list_seek(modeuser->my_chans, seek_arg);
+                        pthread_mutex_unlock(&(modeuser->c_lock));
+                        
+                        if(params[2][0] == '+'){                                     //add the mode, if they don't already have it
+                            if(strchr(userchan->mode, (int) params[2][1]) == NULL)
+                                strcat(userchan->mode, params[2] + 1);
+                        }
+                        else if(params[2][0]  == '-'){
+                            if((delmode = strchr(userchan->mode, (int) params[2][1])) != NULL){ //delete the mode, if they already have it
+                                pthread_mutex_lock(&(user->c_lock));
+                                for(c = delmode; *c != '\0'; c++)
+                                    *c = *(c+1);
+                                pthread_mutex_unlock(&(user->c_lock));
+                            }
+                        }
+                        //relay message to chan
+                        sprintf(reply, "%s!%s@%s MODE %s %s %s", user->nick, user->user, user->address, params[1], params[2], params[3]);
+                        sendtochannel(server, channelpt, reply, NULL);
+                    }
+                    else{                                                            //no, mode string is invalid
+                        sprintf(reply_param, "%s :is unknown mode to me for %s", params[2], params[1]);
+                        constr_reply(ERR_UNKNOWNMODE, user, reply, server, reply_param);
+                        pthread_mutex_lock(&(user->c_lock));
+                        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+                        {
+                            perror("Socket send() failed");
+                            user_exit(server, user); 
+                        }
+                        pthread_mutex_unlock(&(user->c_lock));
+                    }
+                }
+            }
+        }
+
+        free(seek_arg);
+        return 0;
     }
 
     // channel modes
-    seek_arg->field = CHAN;      
-    seek_arg->value = params[1];   
-    pthread_mutex_lock(&lock);
-    channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
-    pthread_mutex_unlock(&lock);
 
     if(channelpt != NULL){
     
-
-    return 0;
+        free(seek_arg);
+        return 0;
     }
 
     // user modes
@@ -1174,6 +1266,7 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
             user_exit(server, user);
         }
         pthread_mutex_unlock(&(user->c_lock));
+        free(seek_arg);
         return 0;
     }
     if(strpbrk(params[2], "ao") == NULL){ // not a valid mode
@@ -1185,17 +1278,29 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
             user_exit(server, user);
         }
         pthread_mutex_unlock(&(user->c_lock));
+        free(seek_arg);
         return 0;
     }
-    if(params[2][0] == '+'){ // add operator priv
-        //strcat(user->mode, params[2][1]);
+    if(strcmp(params[2], "-o") == 0){
+        // check that user is operator, remove mode if so
+        if((delmode = strchr(user->mode, (int) '@')) != NULL){
+            pthread_mutex_lock(&(user->c_lock));
+                for(c = delmode; *c != '\0'; c++)
+                    *c = *(c+1);
+            pthread_mutex_unlock(&(user->c_lock));
+        }
+        //return message to user
+        snprintf(reply, MAXMSG - 2, ":%s MODE %s :%s", params[1], params[1], params[2]);
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            user_exit(server, user);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
+        free(seek_arg);
         return 0;
     }
-    if(params[2][0] == '-'){
-        // do something to remove the priv
-        return 0;
-    }
-        
 
     return 0;
 }

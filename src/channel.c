@@ -86,7 +86,7 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     strcpy(newchan->name, cname);
     newchan->mode[0] = '\0';
     if(oper)
-        strcat(newchan->mode, "@");
+        strcat(newchan->mode, "o");
     pthread_mutex_lock(&(client->c_lock));
     list_append(client->my_chans, newchan);
     pthread_mutex_unlock(&(client->c_lock));
