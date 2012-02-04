@@ -1098,14 +1098,15 @@ int chirc_handle_NAMES(chirc_server *server, person *user, chirc_message params)
         }
         list_iterator_stop(server->userlist);
         pthread_mutex_unlock(&lock);
-        
-        constr_reply(RPL_NAMREPLY, user, reply, server, antisocial);
-        pthread_mutex_lock(&(user->c_lock));
-        if(send(clientSocket, reply, strlen(reply), 0) == -1){
-            perror("Socket send() failed");
-            user_exit(server, user);
+        if(strlen(antisocial) > strlen("* * :")){
+            constr_reply(RPL_NAMREPLY, user, reply, server, antisocial);
+            pthread_mutex_lock(&(user->c_lock));
+            if(send(clientSocket, reply, strlen(reply), 0) == -1){
+                perror("Socket send() failed");
+                user_exit(server, user);
+            }
+            pthread_mutex_unlock(&(user->c_lock));
         }
-        pthread_mutex_unlock(&(user->c_lock));
     }
     else{   //only give NAMES reply for one channel
         seek_arg->value = params[1];
@@ -1114,10 +1115,6 @@ int chirc_handle_NAMES(chirc_server *server, person *user, chirc_message params)
         pthread_mutex_unlock(&lock);
         if(chan != NULL)
             send_names(server, chan, user);
-        else{
-            free(seek_arg);
-            return(0);
-        }
     }
     
     //send RPL_ENDOFNAMES
@@ -1208,6 +1205,8 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
                 else{                                                                //yes, the user exists
                                                                                      //is the mode string valid?
                     if(strpbrk(params[2], "ov") != NULL){                            //yes, the mode string is valid
+                        seek_arg->field = USERCHAN;
+                        seek_arg->value = params[1];
                         pthread_mutex_lock(&(modeuser->c_lock));
                         userchan = (mychan *)list_seek(modeuser->my_chans, seek_arg);
                         pthread_mutex_unlock(&(modeuser->c_lock));
@@ -1225,12 +1224,13 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
                             }
                         }
                         //relay message to chan
-                        sprintf(reply, "%s!%s@%s MODE %s %s %s", user->nick, user->user, user->address, params[1], params[2], params[3]);
+                        snprintf(reply, MAXMSG - 2, ":%s!%s@%s MODE %s %s %s", user->nick, user->user, user->address, params[1], params[2], params[3]);
+                        strcat(reply, "\r\n");
                         sendtochannel(server, channelpt, reply, NULL);
                     }
                     else{                                                            //no, mode string is invalid
-                        sprintf(reply_param, "%s :is unknown mode to me for %s", params[2], params[1]);
-                        constr_reply(ERR_UNKNOWNMODE, user, reply, server, reply_param);
+                        sprintf(reply, "%c", params[2][1]);
+                        constr_reply(ERR_UNKNOWNMODE, user, reply, server, params[1]);
                         pthread_mutex_lock(&(user->c_lock));
                         if(send(clientSocket, reply, strlen(reply), 0) == -1)
                         {

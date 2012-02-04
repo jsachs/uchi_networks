@@ -95,7 +95,7 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, "%s :End of WHOIS list", nick);
             break;
         case 319: // RPL_WHOISCHANNELS
-            sprintf(replmsg, ":%s", extra);
+            sprintf(replmsg, "%s", extra);
             break;
         case 323: // RPL_LISTEND
         	sprintf(replmsg, ":End of LIST");
@@ -145,10 +145,13 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 433: // ERR_NICKNAMEINUSE
             sprintf(replmsg, "%s :Nickname is already in use", extra);
             break;
+        case 441: // ERR_USERNOTINCHANNEL
+            sprintf(replmsg, "%s :They aren't on that channel", extra);
+            break;
         case 442: // ERR_NOTONCHANNEL
         	sprintf(replmsg, "%s :You're not on that channel", extra);
         	break;
-        case 451:
+        case 451: // ERR_NOTREGISTERED
             strcpy(replmsg, ":You have not registered");
             break;
         case 462: // ERR_ALREADYREGISTERED
