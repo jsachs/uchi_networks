@@ -1152,16 +1152,73 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
     }
 
     // channel modes
-    seek_arg->field = CHAN;      
-    seek_arg->value = params[1];   
-    pthread_mutex_lock(&lock);
-    channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
-    pthread_mutex_unlock(&lock);
-
-    if(channelpt != NULL){
-    
-
-    return 0;
+    if(params[1][0] == '#'){
+    	seek_arg->field = CHAN;      
+    	seek_arg->value = params[1];   
+   		pthread_mutex_lock(&lock);
+    	channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
+    	pthread_mutex_unlock(&lock);
+    	if(channelpt == NULL){
+    		constr_reply(ERR_NOSUCHCHANNEL, user, reply, server, NULL);
+        	pthread_mutex_lock(&(user->c_lock));
+        	if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        	{
+            	perror("Socket send() failed");
+            	user_exit(server, user);
+        	}
+        	pthread_mutex_unlock(&(user->c_lock));
+        	return 0;
+    	}
+    	if(params[2][0] == '\0') // asking for channel mode
+    	{
+    		char channelmodes[MAXMSG];
+    		sprintf(channelmodes, "%s +%s", channelpt->name, channelpt->mode);
+    		constr_reply(RPL_CHANNELMODEIS, user, reply, server, channelmodes);
+        	pthread_mutex_lock(&(user->c_lock));
+    		if(send(clientSocket, reply, strlen(reply), 0) == -1)
+    		{
+        	    perror("Socket send() failed");
+        		user_exit(server, user);
+    		}
+    		pthread_mutex_unlock(&(user->c_lock));
+    		return 0;
+    	}
+    	// check for operator priv
+    	if(strpbrk("o", user->mode) == NULL){ // not an operator
+    		constr_reply(ERR_CHANOPRIVISNEEDED, user, reply, server, channelpt->name);
+        	pthread_mutex_lock(&(user->c_lock));
+        	if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        	{
+        	    perror("Socket send() failed");
+        	    user_exit(server, user);
+        	}
+        	pthread_mutex_unlock(&(user->c_lock));
+        	return 0;
+        }
+    	// check for a valid mode
+    	if(strpbrk(params[2], "mt") == NULL){ // not a valid mode
+    	    sprintf(reply, "%c", params[2][1]);
+        	constr_reply(ERR_UNKNOWNMODE, user, reply, server, channelpt->name);
+        	pthread_mutex_lock(&(user->c_lock));
+        	if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        	{
+        	    perror("Socket send() failed");
+        	    user_exit(server, user);
+        	}
+        	pthread_mutex_unlock(&(user->c_lock));
+        	return 0;
+    	}
+    	// change the mode, relay the message
+    	if(params[2][0] == '+'){
+        	strcat(channelpt->mode, params[2] + 1);
+        	sprintf(reply, "MODE changed placeholder");
+        	sendtochannel(server, channelpt, reply, NULL);
+        	return 0;
+    	}
+    	if(params[2][0] == '-'){
+    	    // do something to remove the priv
+    	    return 0;
+    	}
     }
 
     // user modes
@@ -1188,11 +1245,29 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
         return 0;
     }
     if(params[2][0] == '+'){ // add operator priv
-        //strcat(user->mode, params[2][1]);
+        // do nothing, you can't actually add stuff this way
         return 0;
     }
     if(params[2][0] == '-'){
         // do something to remove the priv
+        if(params[2][1] == 'a')
+        	return 0;
+        char* delmode = NULL;
+        char* c;
+        if((delmode = strchr(user->mode, (int) params[2][1])) != NULL){
+        	for(c = delmode; *c != '\0'; c++)
+        		*c = *(c+1);
+        }
+        
+        sprintf(reply, ":%s MODE %s :-%c", user->nick, user->nick, params[2][1]);
+        strcat(reply, "\r\n");
+        pthread_mutex_lock(&(user->c_lock));
+        if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        {
+            perror("Socket send() failed");
+            user_exit(server, user);
+        }
+        pthread_mutex_unlock(&(user->c_lock));
         return 0;
     }
 

@@ -124,6 +124,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 381: // RPL_YOUREOPER
             sprintf(replmsg, ":You are now an IRC operator");
             break;
+        case 324:
+        	sprintf(replmsg, "%s", extra);
+        	break;
         case 401: // ERR_NOSUCHNICK
             sprintf(replmsg, "%s :No such nick/channel", extra);
             break;
@@ -154,14 +157,17 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 464: // ERR_PASSWDMISMATCH
             sprintf(replmsg, ":Password incorrect");
             break;
-        case 482:
+        case 472: // ERR_UNKNOWNMODE
+        	sprintf(replmsg, "%s :is unknown mode char to me for %s", reply, extra);
+        	break;
+        case 482: // ERR_CHANOPRIVISNEEDED
             sprintf(replmsg, "%s :You're not a channel operator", extra);
             break;
         case 501: // ERR_UMODEUNKNOWN
-            sprintf(replmsg, "Unknown MODE flag");
+            sprintf(replmsg, ":Unknown MODE flag");
             break;
         case 502: // ERR_USERSDONTMATCH
-            sprintf(replmsg, "Cannot change mode for other users");
+            sprintf(replmsg, ":Cannot change mode for other users");
             break;
         default:
             break;
