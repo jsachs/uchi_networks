@@ -1159,7 +1159,7 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
     	channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     	pthread_mutex_unlock(&lock);
     	if(channelpt == NULL){
-    		constr_reply(ERR_NOSUCHCHANNEL, user, reply, server, NULL);
+    		constr_reply(ERR_NOSUCHCHANNEL, user, reply, server, params[1]);
         	pthread_mutex_lock(&(user->c_lock));
         	if(send(clientSocket, reply, strlen(reply), 0) == -1)
         	{
@@ -1184,16 +1184,25 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
     		return 0;
     	}
     	// check for operator priv
-    	if(strpbrk("o", user->mode) == NULL){ // not an operator
-    		constr_reply(ERR_CHANOPRIVISNEEDED, user, reply, server, channelpt->name);
-        	pthread_mutex_lock(&(user->c_lock));
-        	if(send(clientSocket, reply, strlen(reply), 0) == -1)
-        	{
-        	    perror("Socket send() failed");
-        	    user_exit(server, user);
+    	if(strchr(user->mode, 'o') == NULL){ // not an operator
+    		
+    		seek_arg->field = USERCHAN;      
+    		seek_arg->value = params[1];   
+   			pthread_mutex_lock(&lock);
+    		mychan *mychanpt = (mychan *)list_seek(user->my_chans, seek_arg);
+    		pthread_mutex_unlock(&lock);
+    		
+    		if(strchr(mychanpt->mode, 'o') == NULL){ // not a channel operator
+    			constr_reply(ERR_CHANOPRIVISNEEDED, user, reply, server, channelpt->name);
+        		pthread_mutex_lock(&(user->c_lock));
+        		if(send(clientSocket, reply, strlen(reply), 0) == -1)
+        		{
+        	    	perror("Socket send() failed");
+        	    	user_exit(server, user);
+        		}
+        		pthread_mutex_unlock(&(user->c_lock));
+        		return 0;
         	}
-        	pthread_mutex_unlock(&(user->c_lock));
-        	return 0;
         }
     	// check for a valid mode
     	if(strpbrk(params[2], "mt") == NULL){ // not a valid mode
@@ -1211,12 +1220,21 @@ int chirc_handle_MODE(chirc_server *server, person *user, chirc_message params)
     	// change the mode, relay the message
     	if(params[2][0] == '+'){
         	strcat(channelpt->mode, params[2] + 1);
-        	sprintf(reply, "MODE changed placeholder");
+        	sprintf(reply, ":%s!%s@%s MODE %s %s",user->nick,user->user,user->address,channelpt->name,params[2]);
+        	strcat(reply, "\r\n");
         	sendtochannel(server, channelpt, reply, NULL);
         	return 0;
     	}
     	if(params[2][0] == '-'){
-    	    // do something to remove the priv
+    	    char* delmode = NULL;
+        	char* c;
+        	if((delmode = strchr(channelpt->mode, (int) params[2][1])) != NULL){
+        		for(c = delmode; *c != '\0'; c++)
+        			*c = *(c+1);
+        	}
+        	sprintf(reply, ":%s!%s@%s MODE %s %s",user->nick,user->user,user->address,channelpt->name,params[2]);
+        	strcat(reply, "\r\n");
+        	sendtochannel(server, channelpt, reply, NULL);
     	    return 0;
     	}
     }

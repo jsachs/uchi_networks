@@ -161,7 +161,7 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         	sprintf(replmsg, "%s :is unknown mode char to me for %s", reply, extra);
         	break;
         case 482: // ERR_CHANOPRIVISNEEDED
-            sprintf(replmsg, "%s :You're not a channel operator", extra);
+            sprintf(replmsg, "%s :You're not channel operator", extra);
             break;
         case 501: // ERR_UMODEUNKNOWN
             sprintf(replmsg, ":Unknown MODE flag");
