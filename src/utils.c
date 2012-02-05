@@ -98,7 +98,7 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, "%s", extra);
             break;
         case 322: // RPL_LIST
-        	sprintf(replmsg, ":%s", extra);
+        	sprintf(replmsg, "%s", extra);
         	break;
         case 323: // RPL_LISTEND
         	sprintf(replmsg, ":End of LIST");
