@@ -997,6 +997,7 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
     strcpy(cname, params[1]);
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
     mychan *dummy = malloc(sizeof(mychan));
+    mychan *topichan;
     strcpy(dummy->name, cname);
     
     
@@ -1023,11 +1024,29 @@ int chirc_handle_TOPIC(chirc_server *server, person *user, chirc_message params)
         return 0;
     }
     
-    // if there is a topic parameter, check if the user is operator
+    // if there is a topic mode, check if the user is operator
     // if they are, they can set the topic
     if(params[2][0] != '\0') {
     	// check if channel is moderated             
-	//if(strchr(user->mode,(int)'@') == NULL) return 0;
+        if(strchr(channelpt->mode,(int) 't') != NULL){
+            seek_arg->field = USERCHAN;
+            pthread_mutex_lock(&(user->c_lock));
+            topichan = (mychan *)list_seek(user->my_chans, seek_arg);
+            if (strchr(topichan->mode, (int) 'o') == NULL && strchr(user->mode, (int) 'o') == NULL) {
+                constr_reply(ERR_CHANOPRIVISNEEDED, user, reply, server, cname);
+                if(send(clientSocket, reply, strlen(reply), 0) == -1)
+                {
+                    perror("Socket send() failed");
+                    user_exit(server, user);
+                }
+                pthread_mutex_unlock(&(user->c_lock));
+                free(seek_arg);
+                free(dummy);
+                free(cname);
+                return 0;
+            }
+            pthread_mutex_unlock(&(user->c_lock));
+        }
         
         // if topic is changed, relay it to the channel
     	strcpy(channelpt->topic, params[2]);
