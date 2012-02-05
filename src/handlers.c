@@ -318,6 +318,8 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                     user_exit(server, user);
                 }
                 pthread_mutex_unlock(&(user->c_lock));
+                
+                return 0;
             }
         }
         else{       //recipient is a channel
@@ -333,6 +335,7 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                 }
                 pthread_mutex_unlock(&(user->c_lock));
                 
+                return 0;
             }
             
             // check that the sender has the appropriate mode for channel
@@ -353,6 +356,8 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                 		    user_exit(server, user);
                 		}
                 		pthread_mutex_unlock(&(user->c_lock));
+                		
+                		return 0;
                 	}
             	}
             }
