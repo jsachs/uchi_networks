@@ -92,7 +92,7 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
             sprintf(replmsg, "%s :is an IRC operator", extra);
             break;
         case 318: // RPL_ENDWHOIS
-            sprintf(replmsg, "%s :End of WHOIS list", nick);
+            sprintf(replmsg, "%s :End of WHOIS list", extra);
             break;
         case 319: // RPL_WHOISCHANNELS
             sprintf(replmsg, "%s", extra);

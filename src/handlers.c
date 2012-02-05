@@ -544,6 +544,7 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
     char wiuser[MAXMSG];        //WHOISUSER message
     char wiserver[MAXMSG];      //WHOISSERVER message
     char wichannels[MAXMSG];    //WHOISCHANNELS message
+    char wiaway[MAXMSG];        //RPL_AWAY message
     int clientSocket = user->clientSocket;
     char *target_nick = params[1];
     mychan *whochan;
@@ -612,14 +613,18 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
         while(list_iterator_hasnext(whoispt->my_chans) && buff > 0){
             numchans++;
             whochan = (mychan *)list_iterator_next(whoispt->my_chans);
-            if(strchr(whochan->mode, (int) 'o') != NULL){
+            if(strchr(whochan->mode, (int) 'o') != NULL){       //if operator of a channel, put that channel first
                 strcat(wichannels, "@");
+            }
+            if(strchr(whochan->mode, (int) 'v') !=NULL){
+                strcat(wichannels, "+");
             }
             buff = MAXMSG - strlen(wichannels);
             strncat(wichannels, whochan->name, buff);
-            if (buff > 0 && list_iterator_hasnext(whoispt->my_chans)){
-                strcat(wichannels, " ");
-            }
+            //if (buff > 0 && list_iterator_hasnext(whoispt->my_chans)){
+              //  strcat(wichannels, " ");
+            //}
+            strcat(wichannels, " ");
         }
         pthread_mutex_unlock(&(whoispt->c_lock));
         
@@ -640,7 +645,7 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
                                                     whoispt->address,
                                                     "chirc-0.3"   // should probably actually store this someplace, like server struct
         );
-        pthread_mutex_unlock(&(user->c_lock));    
+        //pthread_mutex_unlock(&(user->c_lock));    
         
         constr_reply(RPL_WHOISSERVER, user, reply, server, wiserver);
         pthread_mutex_lock(&(user->c_lock));
@@ -651,8 +656,20 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
         }
         pthread_mutex_unlock(&(user->c_lock));
         
+        //AWAY
+        if(strchr(whoispt->mode, (int) 'a') != NULL){
+            snprintf(wiaway, MAXMSG - 2, "%s %s", target_nick, whoispt->away);
+            constr_reply(RPL_AWAY, user, reply, server, wiaway);
+            pthread_mutex_lock(&(user->c_lock));
+            if(send(clientSocket, reply, strlen(reply), 0) == -1)
+            {
+                perror("Socket send() failed");
+                user_exit(server, user);
+            }
+            pthread_mutex_unlock(&(user->c_lock));
+        }
         //WHOISOPERATOR
-        if(strchr(whoispt->mode, (int)'@') != NULL){
+        if(strchr(whoispt->mode, (int)'o') != NULL){
             constr_reply(RPL_WHOISOPERATOR, user, reply, server, target_nick);
             pthread_mutex_lock(&(user->c_lock));
             if(send(clientSocket, reply, strlen(reply), 0) == -1)
@@ -660,10 +677,11 @@ int chirc_handle_WHOIS(chirc_server *server, //current server
                 perror("Socket send() failed");
                 user_exit(server, user);
             }
+            pthread_mutex_unlock(&(user->c_lock));
         }
         
         //ENDOFWHOIS
-        constr_reply(RPL_ENDOFWHOIS, user, reply, server, NULL);
+        constr_reply(RPL_ENDOFWHOIS, user, reply, server, target_nick);
         pthread_mutex_lock(&(user->c_lock));
         if(send(clientSocket, reply, strlen(reply), 0) == -1)
         {
@@ -683,13 +701,25 @@ int chirc_handle_LUSERS(chirc_server *server,   //current server
     char reply[MAXMSG];
     char stats[5];
     int clientSocket = user->clientSocket;
+    unsigned int numops = 0;
     unsigned int unknown;
+    person *maybeop;
     
     //check number of known connections
     pthread_mutex_lock(&lock);
     unsigned int userme = list_size(server->userlist);
     unsigned int numchannels = list_size(server->chanlist);
     unsigned int known = server->numregistered;
+    list_iterator_start(server->userlist);
+    while (list_iterator_hasnext(server->userlist)){
+        maybeop = (person *)list_iterator_next(server->userlist);
+        pthread_mutex_lock(&(maybeop->c_lock));
+        if (strchr(maybeop->mode, (int) 'o') != NULL) {
+            numops++;
+        }
+        pthread_mutex_unlock(&(maybeop->c_lock));
+    }
+    list_iterator_stop(server->userlist);
     pthread_mutex_unlock(&lock);
     
     //check that sender is registered
@@ -719,7 +749,7 @@ int chirc_handle_LUSERS(chirc_server *server,   //current server
     
     //RPL_LUSEROP
     //we'll check for operators in server struct
-    sprintf(stats, "%u", 0);
+    sprintf(stats, "%u", numops);
     
     constr_reply(RPL_LUSEROP, user, reply, server, stats);
     
@@ -1454,8 +1484,8 @@ int chirc_handle_OPER(chirc_server *server, person *user, chirc_message params)
     }
     else {
         // give the person operator power first
-        if(strchr(user->mode, (int)'@') == NULL) // check to make sure not already operator
-            strcat(user->mode, "@");
+        if(strchr(user->mode, (int)'o') == NULL) // check to make sure not already operator
+            strcat(user->mode, "o");
 
         // then send them their message
         constr_reply(RPL_YOUREOPER, user, reply, server, NULL);
