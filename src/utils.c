@@ -36,9 +36,7 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
     char *servname = server->servername;
     char *version = server->version;
     char prefix[MAXMSG] = ":";
-    pthread_mutex_lock(&(client->c_lock));
     strcat(prefix, servname);
-    pthread_mutex_unlock(&(client->c_lock));
     char *nick = client->nick;
     if (strlen(nick) == 0) {
         nick = "*";
@@ -91,6 +89,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 313: // RPL_WHOISOPERATOR
             sprintf(replmsg, "%s :is an IRC operator", extra);
             break;
+        case 315: // RPL_ENDOFWHO
+            sprintf(replmsg, "%s :End of WHO list", extra);
+            break;
         case 318: // RPL_ENDWHOIS
             sprintf(replmsg, "%s :End of WHOIS list", extra);
             break;
@@ -109,6 +110,9 @@ void constr_reply(char code[4], person *client, char *reply, chirc_server *serve
         case 332: // RPL_TOPIC
         	sprintf(replmsg, "%s", reply);
         	break;
+        case 352: // RPL_WHOREPLY
+            strcpy(replmsg, extra);
+            break;
         case 353: // RPL_NAMREPLY
         	strcpy(replmsg, extra);
         	break;
