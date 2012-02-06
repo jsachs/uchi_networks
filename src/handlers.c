@@ -430,6 +430,21 @@ int chirc_handle_NOTICE(chirc_server *server,  //current server
     //if the recipient is a channel
     if (chanpt){
         
+			// check that the sender has the appropriate mode for channel
+         if(strchr(chanpt->mode,'m') != NULL) {
+         	if(strchr(user->mode,'o') == NULL) {
+            	seek_arg->field = USERCHAN;      
+    				seek_arg->value = params[1];   
+   				pthread_mutex_lock(&lock);
+    				mychan *mychanpt = (mychan *)list_seek(user->my_chans, seek_arg);
+    				pthread_mutex_unlock(&lock);
+    				if( (strchr(mychanpt->mode,'o')==NULL) && (strchr(mychanpt->mode,'v')==NULL)) {
+    					free(dummy);
+    					return 0;
+                }
+            }
+        }        
+        
         //only send if user is member of channel; otherwise do nothing
         if (list_contains(user->my_chans, dummy)) 
             sendtochannel(server, chanpt, notice, user->nick);
