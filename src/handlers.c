@@ -353,11 +353,14 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                 		    user_exit(server, user);
                 		}
                 		pthread_mutex_unlock(&(user->c_lock));
+                        
+                        free(seek_arg);
+                        free(dummy);
+                        return 0;
                 	}
             	}
             }
-            else
-                sendtochannel(server, chanpt, priv_msg, user->nick);
+            sendtochannel(server, chanpt, priv_msg, user->nick);
         }
     }
         
