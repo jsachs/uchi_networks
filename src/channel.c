@@ -36,13 +36,10 @@ int fun_seek(const void *el, const void *indicator);
 void user_exit(chirc_server *server, person *user);
 
 void channel_join(person *client, chirc_server *server, char* channel_name){
-    int i;
     int oper = 0;
     int clientSocket = client->clientSocket;
     char reply[MAXMSG];
-    char *replies[2] = {RPL_NAMREPLY,
-    			        RPL_ENDOFNAMES
-    };
+    
     mychan *newchan;
     
     char *cname = malloc(strlen(channel_name));

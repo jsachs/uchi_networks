@@ -356,13 +356,14 @@ int chirc_handle_PRIVMSG(chirc_server *server, //current server
                 		    user_exit(server, user);
                 		}
                 		pthread_mutex_unlock(&(user->c_lock));
-                		
-                		return 0;
+                        
+                        free(seek_arg);
+                        free(dummy);
+                        return 0;
                 	}
             	}
             }
-            else
-                sendtochannel(server, chanpt, priv_msg, user->nick);
+            sendtochannel(server, chanpt, priv_msg, user->nick);
         }
     }
         
@@ -434,6 +435,21 @@ int chirc_handle_NOTICE(chirc_server *server,  //current server
     
     //if the recipient is a channel
     if (chanpt){
+        
+			// check that the sender has the appropriate mode for channel
+         if(strchr(chanpt->mode,'m') != NULL) {
+         	if(strchr(user->mode,'o') == NULL) {
+            	seek_arg->field = USERCHAN;      
+    				seek_arg->value = params[1];   
+   				pthread_mutex_lock(&lock);
+    				mychan *mychanpt = (mychan *)list_seek(user->my_chans, seek_arg);
+    				pthread_mutex_unlock(&lock);
+    				if( (strchr(mychanpt->mode,'o')==NULL) && (strchr(mychanpt->mode,'v')==NULL)) {
+    					free(dummy);
+    					return 0;
+                }
+            }
+        }        
         
         //only send if user is member of channel; otherwise do nothing
         if (list_contains(user->my_chans, dummy)) 
@@ -1262,6 +1278,7 @@ int chirc_handle_NAMES(chirc_server *server, person *user, chirc_message params)
 
 int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params)
 {
+    int skip = 0;
     char reply[MAXMSG];
     char whoreply[MAXMSG];
     char channame[MAXMSG];
@@ -1277,30 +1294,56 @@ int chirc_handle_WHO(chirc_server *server, person *user, chirc_message params)
     
     if(params[1][0] == '\0' || params[1][0] == '*'){
         strcpy(channame, "*");
-        //return RPL_WHOREPLY for everyone
+        //return RPL_WHOREPLY for everyone who doesn't have a channel in common with user
         pthread_mutex_lock(&lock);
         list_iterator_start(server->userlist);
         while (list_iterator_hasnext(server->userlist)) {
+            skip = 0;
             whouser = (person *)list_iterator_next(server->userlist);
             pthread_mutex_lock(&(whouser->c_lock));
-            //construct flags
-            memset(flags, (int) '\0', 10);
-            if (strchr(whouser->mode, (int) 'a') == NULL)
-                strcpy(flags, "H");
-            else
-                strcpy(flags, "G");
-            if(strchr(whouser->mode, (int) 'o') != NULL)
-                strcat(flags, "*");
-            //send RPL_WHOREPLY
-            snprintf(whoreply, MAXMSG - 2, "* %s %s %s %s %s :0 %s", whouser->user, whouser->address, server->servername, whouser->nick, flags, whouser->fullname);
-            pthread_mutex_unlock(&(whouser->c_lock));
-            constr_reply(RPL_WHOREPLY, user, reply, server, whoreply); 
-            pthread_mutex_lock(&(user->c_lock));
-            if(send(clientSocket, reply, strlen(reply), 0) == -1){
-                perror("Socket send() failed");
-                user_exit(server, user);
+            //go through every channel in whouser's list, see if it's also in user's list
+            if(whouser == user){
+                if(list_size(user->my_chans) != 0)
+                    skip = 1;
             }
-            pthread_mutex_unlock(&(user->c_lock));
+            else{
+                list_iterator_start(whouser->my_chans);
+                while (list_iterator_hasnext(whouser->my_chans)) {
+                    whochan = (mychan *)list_iterator_next(whouser->my_chans);
+                    pthread_mutex_lock(&(user->c_lock));
+                    if(list_contains(user->my_chans, whochan)){
+                        skip = 1;
+                        pthread_mutex_unlock(&(user->c_lock));
+                        break;
+                    }
+                    pthread_mutex_unlock(&(user->c_lock));
+                }
+                list_iterator_stop(whouser->my_chans);
+            }
+                   
+            //construct flags
+            if (!skip){
+                memset(flags, (int) '\0', 10);
+                if (strchr(whouser->mode, (int) 'a') == NULL)
+                    strcpy(flags, "H");
+                else
+                    strcpy(flags, "G");
+                if(strchr(whouser->mode, (int) 'o') != NULL)
+                    strcat(flags, "*");
+                //send RPL_WHOREPLY
+                snprintf(whoreply, MAXMSG - 2, "* %s %s %s %s %s :0 %s", whouser->user, whouser->address, server->servername, whouser->nick, flags, whouser->fullname);
+                pthread_mutex_unlock(&(whouser->c_lock));
+                constr_reply(RPL_WHOREPLY, user, reply, server, whoreply); 
+                pthread_mutex_lock(&(user->c_lock));
+                if(send(clientSocket, reply, strlen(reply), 0) == -1){
+                    perror("Socket send() failed");
+                    user_exit(server, user);
+                }
+                pthread_mutex_unlock(&(user->c_lock));
+            }
+            else{
+                pthread_mutex_unlock(&(whouser->c_lock));
+            }
         }
         list_iterator_stop(server->userlist);
         pthread_mutex_unlock(&lock);
