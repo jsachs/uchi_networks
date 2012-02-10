@@ -15,6 +15,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <netinet/in.h>
 #include "mysock.h"
 #include "stcp_api.h"
 #include "transport.h"
@@ -216,17 +217,17 @@ void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *
     void *packet;
 
     STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
-    header->th_seq = htons(ctx->current_sequence_num + 1);
-    header->th_ack = htons(ctx->current_ack_num + 1);
-    header->th_off = htons(OFFSET);
-    header->th_flags = htons(flags);
+    header->th_seq = htonl(ctx->current_sequence_num + 1);
+    header->th_ack = htonl(ctx->current_ack_num + 1);
+    header->th_off = OFFSET;
+    header->th_flags = flags;
     header->th_win = htons(winsize);
     size_t packetsize = HEADERSIZE + psize;
     packet = malloc(packetsize);
     memcpy(packet, header, HEADERSIZE);
     /* deal with payload later */
 
-    if (stcp_network_send(sd, packet, packetsize) < 0){
+    if (stcp_network_send(sd, packet, packetsize, NULL) < 0){
 	/* error handling */
     }
     ctx->current_sequence_num += psize;
