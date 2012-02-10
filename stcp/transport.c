@@ -226,7 +226,7 @@ void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *
     memcpy(packet, header, HEADERSIZE);
     /* deal with payload later */
 
-    if (stcp_network_send(sd, packet, packetsize) < 0){
+    if (stcp_network_send(sd, packet, packetsize, NULL) < 0){
 	/* error handling */
     }
     ctx->current_sequence_num += psize;
