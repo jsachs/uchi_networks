@@ -216,11 +216,11 @@ void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *
     void *packet;
 
     STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
-    header->th_seq = ctx->current_sequence_num + 1;
-    header->th_ack = ctx->current_ack_num + 1;
-    header->th_off = OFFSET;
-    header->th_flags = flags;
-    header->th_win = winsize;
+    header->th_seq = htons(ctx->current_sequence_num + 1);
+    header->th_ack = htons(ctx->current_ack_num + 1);
+    header->th_off = htons(OFFSET);
+    header->th_flags = htons(flags);
+    header->th_win = htons(winsize);
     size_t packetsize = HEADERSIZE + psize;
     packet = malloc(packetsize);
     memcpy(packet, header, HEADERSIZE);
