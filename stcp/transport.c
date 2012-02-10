@@ -51,7 +51,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
     context_t *ctx;
     
     STCPHeader header;
-    header.th_seq = ctx->initial_sequence_num + 1;
+    header.th_seq = ctx->initial_sequence_num;
     
     ctx = (context_t *) calloc(1, sizeof(context_t));
     assert(ctx);
@@ -107,7 +107,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         stcp_network_send(sd, &header, sizeof(header));
         
         /* wait for ACK, then change state to established */
-		stcp_network_recv(sd, &header, BIGWIN);
+	stcp_network_recv(sd, &header, BIGWIN);
         if(!(header.th_flags & TH_ACK)){
             /* do some error handling */
         }				      
