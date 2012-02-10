@@ -20,6 +20,7 @@
 #include "transport.h"
 
 #define BIGWIN 2048
+#define OFFSET 5
 
 
 enum { CSTATE_ESTABLISHED };    /* obviously you should have more states */
@@ -68,12 +69,15 @@ void transport_init(mysocket_t sd, bool_t is_active)
     if(is_active)
     {
         /* send a SYN packet */
-        header.th_off = 5;
+        header.th_off = OFFSET;
         header.th_flags = TH_SYN;
         header.th_win = BIGWIN;
         
         stcp_network_send(sd, &header, sizeof(header));
     	
+        /*update sequence num*/
+        ctx->current_sequence_num = ctx.initial_sequence_num + 1;
+        
     	/* wait for a SYN_ACK */
     	stcp_network_recv(sd, &header, sizeof(header));
     	ctx->current_ack_num = header.th_seq + 1;
@@ -81,7 +85,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
     	
     	/* send an ACK, change state to established */
     	header.th_ack = ctx->current_ack_num;
-    	header.th_off = 5;
+        header.th_seq = ctx->current_sequence_num;
+    	header.th_off = OFFSET;
     	header.th_flags = TH_ACK;
         header.th_win = BIGWIN;
         
@@ -96,15 +101,19 @@ void transport_init(mysocket_t sd, bool_t is_active)
             /* do some error handling */
         }
         
-        /* send a SYN_ACK */
         ctx->current_ack_num = header.th_seq + 1;      
         
+        /* send a SYN_ACK */
+        
         header.th_ack = ctx->current_ack_num;
-        header.th_off = 5; /* unless there are options we'll deal with later */
+        header.th_off = OFFSET;
         header.th_flags = TH_SYN|TH_ACK;
         header.th_win = BIGWIN;
         
         stcp_network_send(sd, &header, sizeof(header));
+        
+        /* update sequence num */
+        ctx->current_sequence_num = ctx->initial_sequence_num + 1;
         
         /* wait for ACK, then change state to established */
 	stcp_network_recv(sd, &header, BIGWIN);
