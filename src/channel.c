@@ -31,22 +31,19 @@ extern pthread_mutex_t loglock;
 
 void constr_reply(char code[4], person *client, char *reply, chirc_server *server, char *extra);
 void sendtochannel(chirc_server *server, channel *chan, char *msg, char *sender);
+void send_names(chirc_server *server, channel *chan, person *user);
 int fun_seek(const void *el, const void *indicator);
+void user_exit(chirc_server *server, person *user);
 
 void channel_join(person *client, chirc_server *server, char* channel_name){
-    int i;
+    int oper = 0;
     int clientSocket = client->clientSocket;
     char reply[MAXMSG];
-    char *replies[2] = {RPL_NAMREPLY,
-    			RPL_ENDOFNAMES
-    };
     
+    mychan *newchan;
     
     char *cname = malloc(strlen(channel_name));
     strcpy(cname, channel_name);
-
-    list_t newlist;
-     
     
     // First, check to see if the channel exists
     el_indicator *seek_arg = malloc(sizeof(el_indicator));
@@ -56,20 +53,16 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     pthread_mutex_lock(&lock);
     channel *channelpt = (channel *)list_seek(server->chanlist, seek_arg);
     pthread_mutex_unlock(&lock);
-	
+	free(seek_arg);
 
     // Create a new channel if it doesn't
     if (channelpt == NULL){
-        list_init(&newlist);
-        if(list_attributes_seeker(&newlist, fun_seek) == -1){
-			perror("list fail");
-			exit(-1);
-		}
+        oper = 1;
 		channelpt = malloc(sizeof(channel));
 		strcpy(channelpt->name, cname);
 		channelpt->topic[0] = '\0';
 		channelpt->mode[0] = '\0';
-		channelpt->chan_users = &newlist;
+        channelpt->numusers = 0;
         pthread_mutex_init(&(channelpt->chan_lock), NULL);
         
         pthread_mutex_lock(&lock);
@@ -79,26 +72,24 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
 
 
 	// Check to see if the user is already in the channel
-    seek_arg->field = CHANUSER;      // used in list seek
-    seek_arg->value = client->nick;   // used in list seek
+    mychan *dummy = malloc(sizeof(mychan));
+    strcpy(dummy->name, cname);
+    if (list_contains(client->my_chans, dummy)) {
+        return;
+    }
     
-    pthread_mutex_lock(&(channelpt->chan_lock));
-    chanuser *chanuserpt = (chanuser *)list_seek(channelpt->chan_users, seek_arg);
-    pthread_mutex_unlock(&(channelpt->chan_lock));
-    free(seek_arg);
-    
-    if (chanuserpt != NULL) return;
-
     // Finally, add the user to the channel
-    chanuser *newuser = malloc(sizeof(chanuser));
-    strcpy(newuser->nick, client->nick);
-    newuser->mode[0] = '+';
-    pthread_mutex_lock(&(channelpt->chan_lock));
-    list_append(channelpt->chan_users, newuser);
-    pthread_mutex_unlock(&(channelpt->chan_lock));
+    newchan = malloc(sizeof(mychan));
+    strcpy(newchan->name, cname);
+    newchan->mode[0] = '\0';
+    if(oper)
+        strcat(newchan->mode, "o");
     pthread_mutex_lock(&(client->c_lock));
-    list_append(client->channel_names, cname);
+    list_append(client->my_chans, newchan);
     pthread_mutex_unlock(&(client->c_lock));
+    pthread_mutex_lock(&(channelpt->chan_lock));
+    channelpt->numusers++;
+    pthread_mutex_unlock(&(channelpt->chan_lock));
 
     // Send appropriate replies
     // This first reply is send to all channel users
@@ -106,21 +97,32 @@ void channel_join(person *client, chirc_server *server, char* channel_name){
     strcat(reply, "\r\n");
     sendtochannel(server, channelpt, reply, NULL);
     
+    // if the channel has a topic, send RPL_TOPIC
     
-    for (i = 0; i < 2; i++){
-        constr_reply(replies[i], client, reply , server, NULL);
+    if(channelpt->topic[0] != '\0'){
+        snprintf(reply, MAXMSG-1, "%s %s", cname, channelpt->topic);
+        constr_reply(RPL_TOPIC, client, reply, server, NULL);
         pthread_mutex_lock(&(client->c_lock));
-        if(send(clientSocket, reply, strlen(reply), 0) == -1)
-        {
+        if (send(clientSocket, reply, strlen(reply), 0) == -1) {
             perror("Socket send() failed");
-            close(clientSocket);
-            pthread_mutex_lock(&lock);
-            list_delete(server->userlist, client);
-            pthread_mutex_unlock(&lock);
-            free(client->address);
-            free(client);
-            pthread_exit(NULL);
+            user_exit(server, client);
         }
         pthread_mutex_unlock(&(client->c_lock));
     }
+    
+    send_names(server, channelpt, client);
+    
+    constr_reply(RPL_ENDOFNAMES, client, reply, server, cname); //ie channel name as final parameter
+    pthread_mutex_lock(&(client->c_lock));
+    if(send(clientSocket, reply, strlen(reply), 0) == -1){
+        perror("Socket send() failed");
+        user_exit(server, client);
+    }
+    pthread_mutex_unlock(&(client->c_lock)); 
+    
+    free(dummy);
 }
+
+
+
+

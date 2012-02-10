@@ -30,6 +30,8 @@
 extern pthread_mutex_t lock;
 
 void parse_message(int clientSocket, chirc_server *server);
+int fun_seek(const void *el, const void *indicator);
+int fun_compare(const void *a, const void *b);
 
 void *service_single_client(void *args) {
 	
@@ -42,6 +44,7 @@ void *service_single_client(void *args) {
     client.nick[0] = '\0';
     client.user[0] = '\0';
     client.fullname[0] = '\0';
+    client.mode[0] = '\0';
     pthread_mutex_init(&(client.c_lock), NULL);
     
     //unpack arguments
@@ -51,14 +54,21 @@ void *service_single_client(void *args) {
     
     //set up client struct
     list_init(&userchans);
+    if(list_attributes_seeker(&userchans, fun_seek) == -1){
+        perror("list fail");
+        exit(-1);
+    }
+    if(list_attributes_comparator(&userchans, fun_compare) == -1){
+        perror("list fail");
+        exit(-1);
+    }
     clientname = wa->clientname;
     client.clientSocket = socket;
     client.address = clientname;
-    client.channel_names = &userchans;
+    client.my_chans = &userchans;
+    client.tid = pthread_self();
     
     free(wa);
-
-    client.tolog = malloc(sizeof(logentry));
 
     //add client to list
     pthread_mutex_lock(&lock);
