@@ -50,6 +50,12 @@ typedef struct
     tcp_seq ack_num_incoming;
     tcp_seq seq_num_outgoing;
     tcp_seq ack_num_outgoing;
+    
+    char window_buffer[WINLEN];
+    tcp_seq window_current;
+    tcp_seq window_start;
+    tcp_seq window_end;
+    tcp_seq window_init;
 } context_t;
 
 
@@ -185,6 +191,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             stcp_app_recv(sd, payload, MAXLEN);
             
             /* deal with seq numbers */
+            ctx->seq_num_outgoing += sizeof(&payload);
             
             send_packet(sd, flags, ctx, winsize, payload, sizeof(&payload));
         }
@@ -195,6 +202,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             /* see stcp_network_recv() */
             void *payload;
             stcp_network_recv(sd, payload, MAXLEN);
+            
+            /* deal with extracting header */
             
             /* deal with seq numbers */
             
