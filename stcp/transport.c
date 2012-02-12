@@ -46,8 +46,10 @@ typedef struct
     int connection_state;   /* state of the connection (established, etc.) */
     tcp_seq initial_sequence_num;
     
-    tcp_seq current_sequence_num;
-    tcp_seq current_ack_num;
+    tcp_seq seq_num_incoming;
+    tcp_seq ack_num_incoming;
+    tcp_seq seq_num_outgoing;
+    tcp_seq ack_num_outgoing;
 } context_t;
 
 
@@ -72,7 +74,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
     assert(ctx);
     
     generate_initial_seq_num(ctx);
-    ctx->current_sequence_num = ctx->initial_sequence_num;
+    ctx->seq_num_outgoing = ctx->initial_sequence_num;
     
     /* XXX: you should send a SYN packet here if is_active, or wait for one
      * to arrive if !is_active.  after the handshake completes, unblock the
@@ -91,7 +93,10 @@ void transport_init(mysocket_t sd, bool_t is_active)
         
     	/* wait for a SYN_ACK */
     	stcp_network_recv(sd, header, sizeof(header));
-    	ctx->current_ack_num = header->th_seq;
+    	ctx->seq_num_incoming = header->th_seq;
+        ctx->ack_num_incoming = header->th_ack;
+        ctx->ack_num_outgoing = ctx->seq_num_incoming + 1;
+        ctx->seq_num_outgoing = ctx->ack_num_incoming;
 
     	/* send an ACK, change state to established */
         flags = TH_ACK;
@@ -105,8 +110,10 @@ void transport_init(mysocket_t sd, bool_t is_active)
         if(!(header->th_flags & TH_SYN)){
             /* do some error handling */
         }
+        ctx->seq_num_incoming = header->th_seq;
+        ctx->ack_num_incoming = header->th_ack;
         ctx->connection_state = CSTATE_SYN_RECEIVED;
-        ctx->current_ack_num = header->th_seq;      
+        ctx->ack_num_outgoing = header->th_seq + 1;      
         
         /* send a SYN_ACK */
         flags = TH_SYN|TH_ACK;
@@ -237,24 +244,21 @@ void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *
     void *packet;
 
     STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
-    header->th_seq = htonl(ctx->current_sequence_num + 1);
-    header->th_ack = htonl(ctx->current_ack_num + 1);
+    header->th_seq = htonl(ctx->seq_num_outgoing);
+    header->th_ack = htonl(ctx->ack_num_outgoing);
     header->th_off = OFFSET;
     header->th_flags = flags;
     header->th_win = htons(winsize);
     size_t packetsize = HEADERSIZE + psize;
     packet = malloc(packetsize);
     memcpy(packet, header, HEADERSIZE);
+    
     /* deal with payload later */
 
     if (stcp_network_send(sd, packet, packetsize, NULL) < 0){
 	/* error handling */
     }
-    ctx->current_sequence_num += psize;
-
-    if(flags&(TH_SYN|TH_FIN)){
-	ctx->current_sequence_num++;
-    }
+    
     free(header);
     free(packet);
     return;
