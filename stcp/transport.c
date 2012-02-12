@@ -184,7 +184,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             void *payload;
             stcp_app_recv(sd, payload, MAXLEN);
             
-            send_packet(sd, flags, ctx, winsize, NULL, 0);
+            /* deal with seq numbers */
+            
+            send_packet(sd, flags, ctx, winsize, payload, sizeof(&payload));
         }
         
         if (event & NETWORK_DATA)
@@ -194,16 +196,18 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             void *payload;
             stcp_network_recv(sd, payload, MAXLEN);
             
+            /* deal with seq numbers */
+            
             stcp_app_send(sd, payload, sizeof(payload));
         }
 
         if (event & APP_CLOSE_REQUESTED)
-	{
-	    /* send any unsent data */
+        {
+            /* send any unsent data */
             flags = TH_FIN;
             send_packet(sd, flags, ctx, winsize, NULL, 0);
-	    ctx->connection_state = CSTATE_FIN_WAIT1;
-	}
+            ctx->connection_state = CSTATE_FIN_WAIT1;
+        }
     }
 }
 
@@ -241,7 +245,7 @@ void our_dprintf(const char *format,...)
  */
 void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize)
 {
-    void *packet;
+    void *packet_header;
 
     STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
     header->th_seq = htonl(ctx->seq_num_outgoing);
@@ -249,16 +253,29 @@ void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *
     header->th_off = OFFSET;
     header->th_flags = flags;
     header->th_win = htons(winsize);
-    size_t packetsize = HEADERSIZE + psize;
-    packet = malloc(packetsize);
-    memcpy(packet, header, HEADERSIZE);
+    size_t headersize = HEADERSIZE;
+    packet_header = malloc(HEADERSIZE);
+    memcpy(packet_header, header, HEADERSIZE);
     
-    /* deal with payload later */
-
-    if (stcp_network_send(sd, packet, packetsize, NULL) < 0){
-	/* error handling */
+    /* deal with payload */
+    if( !payload )
+    {
+        if (psize < MAXLEN){
+            if (stcp_network_send(sd, packet_header, headersize, payload, psize, NULL) < 0){
+                /* error handling */
+            }
+        }
+        else {
+            /* deal with too much data */
+        }
     }
     
+    else
+    {
+        if (stcp_network_send(sd, packet_header, headersize, NULL) < 0){
+            /* error handling */
+        }
+    }
     free(header);
     free(packet);
     return;
