@@ -20,12 +20,22 @@
 #include "stcp_api.h"
 #include "transport.h"
 
+#define MAXLEN 536
 #define BIGWIN 2048
 #define OFFSET 5
 #define HEADERSIZE 20
+#define WINLEN 3072
+#define RAND_MAX 256
 
 
-enum { CSTATE_ESTABLISHED, FIN_WAIT1, FIN_WAIT2 };    /* obviously you should have more states */
+enum { CSTATE_ESTABLISHED,
+       CSTATE_SYN_SENT,
+       CSTATE_SYN_RECEIVED,
+       CSTATE_FIN_WAIT1,
+       CSTATE_FIN_WAIT2,
+       CSTATE_CLOSE_WAIT,
+       CSTATE_LAST_ACK };    /* obviously you should have more states */
+
 
 
 /* this structure is global to a mysocket descriptor */
@@ -77,16 +87,14 @@ void transport_init(mysocket_t sd, bool_t is_active)
         flags = TH_SYN;
         
         send_packet(sd, flags, ctx, winsize, NULL, 0);
+        ctx->connection_state = CSTATE_SYN_SENT;
         
     	/* wait for a SYN_ACK */
     	stcp_network_recv(sd, header, sizeof(header));
     	ctx->current_ack_num = header->th_seq;
-    	
-    	
+
     	/* send an ACK, change state to established */
         flags = TH_ACK;
-
-        
         send_packet(sd, flags, ctx, winsize, NULL, 0);
     }
     
@@ -97,7 +105,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         if(!(header->th_flags & TH_SYN)){
             /* do some error handling */
         }
-        
+        ctx->connection_state = CSTATE_SYN_RECEIVED;
         ctx->current_ack_num = header->th_seq;      
         
         /* send a SYN_ACK */
@@ -106,7 +114,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         send_packet(sd, flags, ctx, winsize, NULL, 0);
         
         /* wait for ACK, then change state to established */
-	stcp_network_recv(sd, header, BIGWIN);
+	    stcp_network_recv(sd, header, BIGWIN);
         if(!(header->th_flags & TH_ACK)){
             /* do some error handling */
         }				      
@@ -135,7 +143,7 @@ static void generate_initial_seq_num(context_t *ctx)
     ctx->initial_sequence_num = 1;
 #else
     /* you have to fill this up */
-    /*ctx->initial_sequence_num =;*/
+    ctx->initial_sequence_num = rand();
 #endif
 }
 
@@ -166,17 +174,20 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         {
             /* the application has requested that data be sent */
             /* see stcp_app_recv() */
-            /* stcp_app_recv(mysocket_t sd, void *dst, size_t max_len); */
+            void *payload;
+            stcp_app_recv(sd, payload, MAXLEN);
             
-            
+            send_packet(sd, flags, ctx, winsize, NULL, 0);
         }
         
         if (event & NETWORK_DATA)
         {
             /* network data transmission */
             /* see stcp_network_recv() */
-            /* stcp_network_recv(mysocket_t sd, void *dst, size_t max_len); */
-	    stcp_network_recv(sd, 
+            void *payload;
+            stcp_network_recv(sd, payload, MAXLEN);
+            
+            stcp_app_send(sd, payload, sizeof(payload));
         }
 
         if (event & APP_CLOSE_REQUESTED)
@@ -184,7 +195,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 	    /* send any unsent data */
             flags = TH_FIN;
             send_packet(sd, flags, ctx, winsize, NULL, 0);
-	    ctx->connection_state = FIN_WAIT1;
+	    ctx->connection_state = CSTATE_FIN_WAIT1;
 	}
     }
 }
