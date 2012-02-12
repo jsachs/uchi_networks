@@ -25,7 +25,7 @@
 #define HEADERSIZE 20
 
 
-enum { CSTATE_ESTABLISHED };    /* obviously you should have more states */
+enum { CSTATE_ESTABLISHED, FIN_WAIT1, FIN_WAIT2 };    /* obviously you should have more states */
 
 
 /* this structure is global to a mysocket descriptor */
@@ -150,7 +150,9 @@ static void generate_initial_seq_num(context_t *ctx)
 static void control_loop(mysocket_t sd, context_t *ctx)
 {
     assert(ctx);
-    
+    uint8_t flags;
+    uint16_t winsize = BIGWIN;
+    STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
     while (!ctx->done)
     {
         unsigned int event;
@@ -174,9 +176,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             /* network data transmission */
             /* see stcp_network_recv() */
             /* stcp_network_recv(mysocket_t sd, void *dst, size_t max_len); */
+	    stcp_network_recv(sd, 
         }
-        
-        /* etc */
+
+        if (event & APP_CLOSE_REQUESTED)
+	{
+	    /* send any unsent data */
+            flags = TH_FIN;
+            send_packet(sd, flags, ctx, winsize, NULL, 0);
+	    ctx->connection_state = FIN_WAIT1;
+	}
     }
 }
 
