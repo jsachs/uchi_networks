@@ -277,7 +277,7 @@ void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *
         }
     }
     free(header);
-    free(packet);
+    free(packet_header);
     return;
 }
 
