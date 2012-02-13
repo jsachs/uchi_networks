@@ -20,18 +20,14 @@
 #include "stcp_api.h"
 #include "transport.h"
 
-/* we dont like this debug , but what to do for varargs ? */
-#ifdef _DEBUG_
 #define DEBUG(x, args...) printf(x, ## args)
-#else
-#define DEBUG(x, args...) do{}while(0)
-#endif
+
 
 #define MAXLEN 536
 #define OFFSET 5
 #define HEADERSIZE 20
 #define WINLEN 3072
-#define RAND_MAX 256
+#define MAX_INIT_SEQ 256
 
 
 enum { CSTATE_ESTABLISHED,
@@ -80,7 +76,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
 {
     context_t *ctx;
     uint8_t flags;
-    uint16_t winsize = BIGWIN;
+    uint16_t winsize = WINLEN;
     int tcplen;
 
     ctx = (context_t *) calloc(1, sizeof(context_t));
@@ -106,7 +102,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
         
         DEBUG("Sent SYN packet with seq number %d\n", ntohl(header->th_seq));
-        free(header);
         
         if(tcplen < 0) {
             DEBUG("SYN send failed");
@@ -115,22 +110,21 @@ void transport_init(mysocket_t sd, bool_t is_active)
         else
         {
             ctx->connection_state = CSTATE_SYN_SENT;
-            ctx->seq_num_incoming = header->th_seq;
-            ctx->ack_num_incoming = header->th_ack;
-            ctx->ack_num_outgoing = ctx->seq_num_incoming + 1;
+            ctx->ack_num_incoming = ntohl(header->th_seq) + 1;
             ctx->seq_num_outgoing = ctx->ack_num_incoming;
             
             while(1)
             {
-                unsigned int event = stcp_wait_for_event(sd, 0, NULL); /* yes we need to add timeout later */
+                unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
                 
                 if(event & NETWORK_DATA)
                 {
-                    STCPHeader *header2 = (STCPHeader *)calloc(1, sizeof(STCPHeader) + MAXLEN);
-                    
-                    stcp_network_recv(sd, header2, sizeof(header2));
-                    DEBUG("packet recieved with ack number %d\n", ntohl(header2->th_ack));
-                    if((header2->flags & TH_SYN)& (header2->flags & TH_ACK) &(header2->th_ack == seq_num_outgoing + 1)){
+                    stcp_network_recv(sd, buffer, sizeof(buffer));
+                    STCPHeader *inheader = (STCPHeader *) buffer;
+                    DEBUG("packet recieved with ack number %d\n", ntohl(inheader->th_ack));
+                    if(((inheader->th_flags & TH_SYN) &&  (inheader->th_flags & TH_ACK))  && ( (tcp_seq) ntohl(inheader->th_ack) == ctx->seq_num_outgoing)){
+			ctx->seq_num_incoming = (ntohl(inheader->th_seq));
+			ctx->ack_num_outgoing = ctx->seq_num_incoming + 1;
                         header = make_stcp_packet(TH_ACK, ctx, 0);
                         tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
                         DEBUG("Sent ACK packet with seq number %d\n", ntohl(header->th_seq));
@@ -139,7 +133,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
                             errno = ECONNREFUSED;
                         }
                         free(header);
-                        free(header2);
                         break;
                     }
                 }
@@ -152,14 +145,15 @@ void transport_init(mysocket_t sd, bool_t is_active)
         /* wait for a SYN packet */
         while(1)
         {
-            unsigned int event = stcp_wait_for_event(sd, 0, NULL); /* yes we need to add timeout later */
+            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
             if(event & NETWORK_DATA){
-                stcp_network_recv(sd, header, sizeof(header));
+                stcp_network_recv(sd, buffer, sizeof(buffer));
+                header = (STCPHeader *) buffer;
                 if(header->th_flags & TH_SYN){
-                    ctx->seq_num_incoming = header->th_seq;
-                    ctx->ack_num_incoming = header->th_ack;
+                    ctx->seq_num_incoming = ntohl(header->th_seq);
+                    ctx->ack_num_incoming = ntohl(header->th_ack);
                     ctx->connection_state = CSTATE_SYN_RECEIVED;
-                    ctx->ack_num_outgoing = header->th_seq + 1;
+                    ctx->ack_num_outgoing = ntohl(header->th_seq) + 1;
                     
                     header = make_stcp_packet(TH_SYN|TH_ACK, ctx, 0);
                     tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
@@ -174,9 +168,10 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
         while(1)
         {
-            event = stcp_wait_for_event(sd, 0, NULL);
+            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
             if(event & NETWORK_DATA){
-                stcp_network_recv(sd, header, sizeof(header));
+                stcp_network_recv(sd, buffer, sizeof(buffer));
+                header = (STCPHeader *) buffer;
                 if((header->th_flags & TH_ACK) & (header->th_ack == ctx->seq_num_outgoing + 1)) {
                     free(header);
                     break;
@@ -208,7 +203,7 @@ static void generate_initial_seq_num(context_t *ctx)
     ctx->initial_sequence_num = 1;
 #else
     /* you have to fill this up */
-    ctx->initial_sequence_num = rand();
+    ctx->initial_sequence_num = rand()%MAX_INIT_SEQ;
 #endif
 }
 
@@ -224,7 +219,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 {
     assert(ctx);
     uint8_t flags;
-    uint16_t winsize = BIGWIN;
+    uint16_t winsize = WINLEN;
     STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
     while (!ctx->done)
     {
