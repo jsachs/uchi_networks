@@ -76,7 +76,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
 {
     context_t *ctx;
     uint8_t flags;
-    uint16_t winsize = WINLEN;
     int tcplen;
 
     ctx = (context_t *) calloc(1, sizeof(context_t));
@@ -110,8 +109,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
         else
         {
             ctx->connection_state = CSTATE_SYN_SENT;
-            ctx->ack_num_incoming = ntohl(header->th_seq) + 1;
-            ctx->seq_num_outgoing = ctx->ack_num_incoming;
             
             while(ctx->connection_state == CSTATE_SYN_SENT)
             {
@@ -120,17 +117,19 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 if(event & NETWORK_DATA)
                 {
                     tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
-                    if(tcplen < sizeof(STCPHeader) || header->th_flags != (TH_SYN | TH_ACK)) {
+                    flags = (TH_SYN|TH_ACK);
+                    header = (STCPHeader *) buffer;
+                    if(( tcplen < sizeof(STCPHeader)) || !((header->th_flags & TH_SYN)&&(header->th_flags & TH_ACK))) {
                         DEBUG("Did not receive SYN/ACK\n");
                         continue;
                     }
                     else
                     {
-                        STCPHeader *inheader = (STCPHeader *) buffer;
-                        DEBUG("packet recieved with seq %d and ack %d\n", ntohl(inheader->th_seq), ntohl(inheader->th_ack));
-                        if(ntohl(inheader->th_ack) == ctx->seq_num_outgoing){
-                            ctx->seq_num_incoming = ntohl(inheader->th_seq);
-                            ctx->ack_num_outgoing = ctx->seq_num_incoming + 1;
+                        DEBUG("packet recieved with seq %d and ack %d\n", ntohl(header->th_seq), ntohl(header->th_ack));
+                        if(ntohl(header->th_ack) == ctx->seq_num_outgoing){
+                            ctx->seq_num_incoming = ntohl(header->th_seq);
+                            ctx->seq_num_outgoing = ctx->initial_sequence_num + 1;
+                            ctx->ack_num_outgoing = ctx->seq_num_incoming;
                             header = make_stcp_packet(TH_ACK, ctx, 0);
                             tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
                             DEBUG("Sent ACK packet with seq number %d\n", ntohl(header->th_seq));
@@ -166,12 +165,13 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     ctx->connection_state = CSTATE_SYN_RECEIVED;
                     
                     ctx->seq_num_incoming = ntohl(header->th_seq);
-                    ctx->ack_num_incoming = ntohl(header->th_ack);
-                    ctx->ack_num_outgoing = ntohl(header->th_seq) + 1;
+                    ctx->ack_num_outgoing = ntohl(header->th_seq);
                     
                     header = make_stcp_packet(TH_SYN|TH_ACK, ctx, 0);
                     tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-                    DEBUG("SYN/ACK sent with ack number %d and seq number %d\n", header->th_ack, header->th_seq);
+                    ctx->seq_num_outgoing += 1; 
+
+                    DEBUG("SYN/ACK sent with ack number %d and seq number %d\n", htonl(header->th_ack), htonl(header->th_seq));
                     if(tcplen < 0){
                         DEBUG("SYN/ACK send failed");
                         errno = ECONNABORTED;
@@ -219,6 +219,7 @@ static void generate_initial_seq_num(context_t *ctx)
     ctx->initial_sequence_num = 1;
 #else
     /* you have to fill this up */
+    
     ctx->initial_sequence_num = rand()%MAX_INIT_SEQ;
 #endif
 }
@@ -255,7 +256,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             /* see stcp_app_recv() */
             if( TRUE /*later replaced for sliding window*/)
             {
-                int send_size = MAXLEN
+                int send_size = MAXLEN;
                 /* again, this will be dynamic when we implement the window */
                 char * buffer = (char *) calloc(1, send_size);
                 
@@ -357,7 +358,7 @@ static STCPHeader * make_stcp_packet(uint8_t flags, context_t *ctx, int len)
     
 	header->th_flags = flags;
 	header->th_seq = htonl(ctx->seq_num_outgoing);
-    header->th_ack = htonl(ctx->ack_num_outgoing);
+        header->th_ack = htonl(ctx->ack_num_outgoing);
 	header->th_off = OFFSET;
 	header->th_win = htons(WINLEN);
 	return header;
