@@ -113,27 +113,35 @@ void transport_init(mysocket_t sd, bool_t is_active)
             ctx->ack_num_incoming = ntohl(header->th_seq) + 1;
             ctx->seq_num_outgoing = ctx->ack_num_incoming;
             
-            while(1)
+            while(ctx->connection_state == CSTATE_SYN_SENT)
             {
                 unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
                 
                 if(event & NETWORK_DATA)
                 {
-                    stcp_network_recv(sd, buffer, sizeof(buffer));
-                    STCPHeader *inheader = (STCPHeader *) buffer;
-                    DEBUG("packet recieved with ack number %d\n", ntohl(inheader->th_ack));
-                    if(((inheader->th_flags & TH_SYN) &&  (inheader->th_flags & TH_ACK))  && ( (tcp_seq) ntohl(inheader->th_ack) == ctx->seq_num_outgoing)){
-			ctx->seq_num_incoming = (ntohl(inheader->th_seq));
-			ctx->ack_num_outgoing = ctx->seq_num_incoming + 1;
-                        header = make_stcp_packet(TH_ACK, ctx, 0);
-                        tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-                        DEBUG("Sent ACK packet with seq number %d\n", ntohl(header->th_seq));
-                        if(tcplen < 0) {
-                            DEBUG("SYN send failed");
-                            errno = ECONNREFUSED;
-                        }
-                        free(header);
-                        break;
+                    tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
+                    if(tcplen < sizeof(STCPHeader) || header->th_flags != (TH_SYN | TH_ACK)) {
+                        DEBUG("Did not receive SYN/ACK\n");
+                        continue;
+                    }
+                    else
+                    {
+                        STCPHeader *inheader = (STCPHeader *) buffer;
+                        DEBUG("packet recieved with seq %d and ack %d\n", ntohl(inheader->th_seq), ntohl(inheader->th_ack));
+                        if(ntohl(inheader->th_ack) == ctx->seq_num_outgoing){
+                            ctx->seq_num_incoming = ntohl(inheader->th_seq);
+                            ctx->ack_num_outgoing = ctx->seq_num_incoming + 1;
+                            header = make_stcp_packet(TH_ACK, ctx, 0);
+                            tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                            DEBUG("Sent ACK packet with seq number %d\n", ntohl(header->th_seq));
+                            if(tcplen < 0) {
+                                DEBUG("ACK send failed");
+                                errno = ECONNABORTED;
+                                break;
+                            }
+                            ctx->connection_state = CSTATE_ESTABLISHED;
+                            free(header);
+                        } 
                     }
                 }
             }
@@ -141,18 +149,24 @@ void transport_init(mysocket_t sd, bool_t is_active)
     }
     if(!is_active)
     {
-        STCPHeader *header = (STCPHeader *)calloc(1, sizeof(STCPHeader) + MAXLEN);
         /* wait for a SYN packet */
-        while(1)
+        while(ctx->connection_state == CSTATE_CLOSED)
         {
             unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
             if(event & NETWORK_DATA){
-                stcp_network_recv(sd, buffer, sizeof(buffer));
-                header = (STCPHeader *) buffer;
-                if(header->th_flags & TH_SYN){
+                tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
+                STCPHeader *header = (STCPHeader *) buffer;
+                if(tcplen < sizeof(STCPHeader) || header->th_flags != TH_SYN) {
+                    DEBUG("Did not receive SYN packet\n");
+                    continue;
+                }
+                else
+                {
+                    DEBUG("Received SYN with seq number %d\n", ntohl(header->th_seq));
+                    ctx->connection_state = CSTATE_SYN_RECEIVED;
+                    
                     ctx->seq_num_incoming = ntohl(header->th_seq);
                     ctx->ack_num_incoming = ntohl(header->th_ack);
-                    ctx->connection_state = CSTATE_SYN_RECEIVED;
                     ctx->ack_num_outgoing = ntohl(header->th_seq) + 1;
                     
                     header = make_stcp_packet(TH_SYN|TH_ACK, ctx, 0);
@@ -160,30 +174,32 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     DEBUG("SYN/ACK sent with ack number %d and seq number %d\n", header->th_ack, header->th_seq);
                     if(tcplen < 0){
                         DEBUG("SYN/ACK send failed");
-                        errno = ECONNREFUSED;
+                        errno = ECONNABORTED;
+                        break;
                     }
-                    break;
                 }
             }
         }
-        while(1)
+        while(ctx->connection_state == CSTATE_SYN_RECEIVED)
         {
             unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
             if(event & NETWORK_DATA){
-                stcp_network_recv(sd, buffer, sizeof(buffer));
-                header = (STCPHeader *) buffer;
-                if((header->th_flags & TH_ACK) & (header->th_ack == ctx->seq_num_outgoing + 1)) {
-                    free(header);
-                    break;
+                tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
+                STCPHeader *header = (STCPHeader *) buffer;
+                if(tcplen < sizeof(STCPHeader) || header->th_flags != TH_ACK) {
+                    DEBUG("Did not receieve ACK packet\n");
+                    continue;
+                }
+                if(ntohl(header->th_ack) == ctx->seq_num_outgoing) {
+                    DEBUG("Receieved ACK with ack number %d\n", ntohl(header->th_ack));
+                    ctx->connection_state = CSTATE_ESTABLISHED;
                 }
             }
         }
     }
     
     
-    /* potentially handle error conditions */    
-    
-    ctx->connection_state = CSTATE_ESTABLISHED;
+    /* potentially handle error conditions */
     stcp_unblock_application(sd);
     
     control_loop(sd, ctx);
@@ -220,7 +236,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     assert(ctx);
     uint8_t flags;
     uint16_t winsize = WINLEN;
-    STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
+    int tcplen;
+    char packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload */
+    
     while (!ctx->done)
     {
         unsigned int event;
@@ -232,37 +250,74 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)
         {
+            DEBUG("Application Data\n");
             /* the application has requested that data be sent */
             /* see stcp_app_recv() */
-            void *payload;
-            stcp_app_recv(sd, payload, MAXLEN);
-            
-            /* deal with seq numbers */
-            ctx->seq_num_outgoing += sizeof(&payload);
-            
-            send_packet(sd, flags, ctx, winsize, payload, sizeof(&payload));
+            if( TRUE /*later replaced for sliding window*/)
+            {
+                int send_size = MAXLEN
+                /* again, this will be dynamic when we implement the window */
+                char * buffer = (char *) calloc(1, send_size);
+                
+                tcplen = stcp_app_recv(sd, buffer, send_size);
+                
+                if( tcplen > 0 ) {
+                    DEBUG("Application data size: %d\n", tcplen);
+                    /* deal with app data */
+                    
+                }
+                free(buffer);
+            }
+            else {
+                DEBUG("Could not send application data");
+            }
         }
-        
         if (event & NETWORK_DATA)
         {
+            DEBUG("Network Data\n");
             /* network data transmission */
             /* see stcp_network_recv() */
-            void *payload;
-            stcp_network_recv(sd, payload, MAXLEN);
             
-            /* deal with extracting header */
+            tcplen = stcp_network_recv(sd, packet, sizeof(packet));
             
-            /* deal with seq numbers */
-            
-            stcp_app_send(sd, payload, sizeof(payload));
+            if( tcplen >= sizeof(STCPHeader) )
+            {
+                STCPHeader *header = (STCPHeader *) packet;
+                DEBUG("Receieved packet with seq %d and ack %d\n", ntohl(header->th_seq), ntohl(header->th_ack));
+                
+                int data_size = sizeof(header) - header->th_off;
+                DEBUG("Received net data size is %d\n", data_size);
+                
+                if (header->th_flags == 0)
+                {
+                    
+                }
+                else if (header->th_flags & TH_ACK)
+                {
+                    
+                }
+                else if (header->th_flags & TH_FIN)
+                {
+                    
+                }
+                else if (header->th_flags == (TH_ACK|TH_FIN))
+                {
+                    
+                }
+                
+            }
         }
-
         if (event & APP_CLOSE_REQUESTED)
         {
-            /* send any unsent data */
-            flags = TH_FIN;
-            send_packet(sd, flags, ctx, winsize, NULL, 0);
-            ctx->connection_state = CSTATE_FIN_WAIT1;
+            DEBUG("Application close requested\n");
+            if(ctx->connection_state == CSTATE_ESTABLISHED)
+            {
+                
+            }
+            if(ctx->connection_state == CSTATE_CLOSE_WAIT)
+            {
+                
+            }
         }
     }
 }
@@ -294,48 +349,6 @@ void our_dprintf(const char *format,...)
     fflush(stdout);
 }
 
-/* send_packet
- *
- * a wrapper function that takes flags, a context, window size,
- * and a pointer and size for the payload, if there is one
- */
-void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize)
-{
-    void *packet_header;
-
-    STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
-    header->th_seq = htonl(ctx->seq_num_outgoing);
-    header->th_ack = htonl(ctx->ack_num_outgoing);
-    header->th_off = OFFSET;
-    header->th_flags = flags;
-    header->th_win = htons(winsize);
-    size_t headersize = HEADERSIZE;
-    packet_header = malloc(HEADERSIZE);
-    memcpy(packet_header, header, HEADERSIZE);
-    
-    /* deal with payload */
-    if( !payload )
-    {
-        if (psize < MAXLEN){
-            if (stcp_network_send(sd, packet_header, headersize, payload, psize, NULL) < 0){
-                /* error handling */
-            }
-        }
-        else {
-            /* deal with too much data */
-        }
-    }
-    
-    else
-    {
-        if (stcp_network_send(sd, packet_header, headersize, NULL) < 0){
-            /* error handling */
-        }
-    }
-    free(header);
-    free(packet_header);
-    return;
-}
 
 static STCPHeader * make_stcp_packet(uint8_t flags, context_t *ctx, int len)
 {
@@ -351,6 +364,19 @@ static STCPHeader * make_stcp_packet(uint8_t flags, context_t *ctx, int len)
 }
 
 
+static void * get_tcp_data(void *packet)
+{
+    void *data = ((char *) packet) + (((STCPHeader *) packet)->th_off * sizeof(uint32_t));
+    return data;
+}
+                          
 
 
+                           
+                           
+                           
+                           
+                           
+                           
+                           
 
