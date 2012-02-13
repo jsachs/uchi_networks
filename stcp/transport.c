@@ -20,8 +20,14 @@
 #include "stcp_api.h"
 #include "transport.h"
 
+/* we dont like this debug , but what to do for varargs ? */
+#ifdef _DEBUG_
+#define DEBUG(x, args...) printf(x, ## args)
+#else
+#define DEBUG(x, args...) do{}while(0)
+#endif
+
 #define MAXLEN 536
-#define BIGWIN 2048
 #define OFFSET 5
 #define HEADERSIZE 20
 #define WINLEN 3072
@@ -34,8 +40,8 @@ enum { CSTATE_ESTABLISHED,
        CSTATE_FIN_WAIT1,
        CSTATE_FIN_WAIT2,
        CSTATE_CLOSE_WAIT,
-       CSTATE_LAST_ACK };    /* obviously you should have more states */
-
+       CSTATE_LAST_ACK,
+       CSTATE_CLOSED };    /* obviously you should have more states */
 
 
 /* this structure is global to a mysocket descriptor */
@@ -62,6 +68,8 @@ typedef struct
 static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
 void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize);
+static STCPHeader * make_stcp_packet(uint8_t flags, context_t *ctx, int len);
+
 
 
 /* initialise the transport layer, and start the main loop, handling
@@ -70,17 +78,20 @@ void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *
  */
 void transport_init(mysocket_t sd, bool_t is_active)
 {
-    STCPHeader *header = (STCPHeader *)malloc(HEADERSIZE);
-
     context_t *ctx;
     uint8_t flags;
     uint16_t winsize = BIGWIN;
+    int tcplen;
 
     ctx = (context_t *) calloc(1, sizeof(context_t));
     assert(ctx);
     
+    char buffer[sizeof(STCPHeader) + MAXLEN];
+    
     generate_initial_seq_num(ctx);
     ctx->seq_num_outgoing = ctx->initial_sequence_num;
+    
+    ctx->connection_state = CSTATE_CLOSED;
     
     /* XXX: you should send a SYN packet here if is_active, or wait for one
      * to arrive if !is_active.  after the handshake completes, unblock the
@@ -91,46 +102,87 @@ void transport_init(mysocket_t sd, bool_t is_active)
      */
     if(is_active)
     {
-        /* send a SYN packet */
-        flags = TH_SYN;
+        STCPHeader *header = make_stcp_packet(TH_SYN, ctx, 0);
+        tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
         
-        send_packet(sd, flags, ctx, winsize, NULL, 0);
-        ctx->connection_state = CSTATE_SYN_SENT;
+        DEBUG("Sent SYN packet with seq number %d\n", ntohl(header->th_seq));
+        free(header);
         
-    	/* wait for a SYN_ACK */
-    	stcp_network_recv(sd, header, sizeof(header));
-    	ctx->seq_num_incoming = header->th_seq;
-        ctx->ack_num_incoming = header->th_ack;
-        ctx->ack_num_outgoing = ctx->seq_num_incoming + 1;
-        ctx->seq_num_outgoing = ctx->ack_num_incoming;
-
-    	/* send an ACK, change state to established */
-        flags = TH_ACK;
-        send_packet(sd, flags, ctx, winsize, NULL, 0);
+        if(tcplen < 0) {
+            DEBUG("SYN send failed");
+            errno = ECONNREFUSED;
+        }
+        else
+        {
+            ctx->connection_state = CSTATE_SYN_SENT;
+            ctx->seq_num_incoming = header->th_seq;
+            ctx->ack_num_incoming = header->th_ack;
+            ctx->ack_num_outgoing = ctx->seq_num_incoming + 1;
+            ctx->seq_num_outgoing = ctx->ack_num_incoming;
+            
+            while(1)
+            {
+                unsigned int event = stcp_wait_for_event(sd, 0, NULL); /* yes we need to add timeout later */
+                
+                if(event & NETWORK_DATA)
+                {
+                    STCPHeader *header2 = (STCPHeader *)calloc(1, sizeof(STCPHeader) + MAXLEN);
+                    
+                    stcp_network_recv(sd, header2, sizeof(header2));
+                    DEBUG("packet recieved with ack number %d\n", ntohl(header2->th_ack));
+                    if((header2->flags & TH_SYN)& (header2->flags & TH_ACK) &(header2->th_ack == seq_num_outgoing + 1)){
+                        header = make_stcp_packet(TH_ACK, ctx, 0);
+                        tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                        DEBUG("Sent ACK packet with seq number %d\n", ntohl(header->th_seq));
+                        if(tcplen < 0) {
+                            DEBUG("SYN send failed");
+                            errno = ECONNREFUSED;
+                        }
+                        free(header);
+                        free(header2);
+                        break;
+                    }
+                }
+            }
+        }
     }
-    
     if(!is_active)
     {
+        STCPHeader *header = (STCPHeader *)calloc(1, sizeof(STCPHeader) + MAXLEN);
         /* wait for a SYN packet */
-        stcp_network_recv(sd, header, BIGWIN);
-        if(!(header->th_flags & TH_SYN)){
-            /* do some error handling */
+        while(1)
+        {
+            unsigned int event = stcp_wait_for_event(sd, 0, NULL); /* yes we need to add timeout later */
+            if(event & NETWORK_DATA){
+                stcp_network_recv(sd, header, sizeof(header));
+                if(header->th_flags & TH_SYN){
+                    ctx->seq_num_incoming = header->th_seq;
+                    ctx->ack_num_incoming = header->th_ack;
+                    ctx->connection_state = CSTATE_SYN_RECEIVED;
+                    ctx->ack_num_outgoing = header->th_seq + 1;
+                    
+                    header = make_stcp_packet(TH_SYN|TH_ACK, ctx, 0);
+                    tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                    DEBUG("SYN/ACK sent with ack number %d and seq number %d\n", header->th_ack, header->th_seq);
+                    if(tcplen < 0){
+                        DEBUG("SYN/ACK send failed");
+                        errno = ECONNREFUSED;
+                    }
+                    break;
+                }
+            }
         }
-        ctx->seq_num_incoming = header->th_seq;
-        ctx->ack_num_incoming = header->th_ack;
-        ctx->connection_state = CSTATE_SYN_RECEIVED;
-        ctx->ack_num_outgoing = header->th_seq + 1;      
-        
-        /* send a SYN_ACK */
-        flags = TH_SYN|TH_ACK;
-        
-        send_packet(sd, flags, ctx, winsize, NULL, 0);
-        
-        /* wait for ACK, then change state to established */
-	    stcp_network_recv(sd, header, BIGWIN);
-        if(!(header->th_flags & TH_ACK)){
-            /* do some error handling */
-        }				      
+        while(1)
+        {
+            event = stcp_wait_for_event(sd, 0, NULL);
+            if(event & NETWORK_DATA){
+                stcp_network_recv(sd, header, sizeof(header));
+                if((header->th_flags & TH_ACK) & (header->th_ack == ctx->seq_num_outgoing + 1)) {
+                    free(header);
+                    break;
+                }
+            }
+        }
     }
     
     
@@ -290,6 +342,18 @@ void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *
     return;
 }
 
+static STCPHeader * make_stcp_packet(uint8_t flags, context_t *ctx, int len)
+{
+    STCPHeader * header = (STCPHeader *) calloc(1, sizeof(STCPHeader) + len);
+	assert(header);
+    
+	header->th_flags = flags;
+	header->th_seq = htonl(ctx->seq_num_outgoing);
+    header->th_ack = htonl(ctx->ack_num_outgoing);
+	header->th_off = OFFSET;
+	header->th_win = htons(WINLEN);
+	return header;
+}
 
 
 
