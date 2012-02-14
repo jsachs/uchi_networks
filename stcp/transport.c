@@ -30,6 +30,7 @@
 #define HEADERSIZE 20
 #define WINLEN 3072
 #define MAX_INIT_SEQ 256
+#define WORDSIZE 4
 
 
 enum { CSTATE_ESTABLISHED,
@@ -245,7 +246,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     assert(ctx);
     uint8_t flags;
     int tcplen;
-    char packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ recv_packet */
+    char packet[sizeof(STCPHeader) + MAXOPS + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ recv_packet */
     char payload[MAXLEN];
     STCPHeader *in_header;
     void *packtosend;
@@ -280,7 +281,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     DEBUG("Application data size: %d\n", tcplen);
                     /*create and send packet*/
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, tcplen);
-                    memcpy(packtosend + sizeof(STCPHeader) + OFFSET, buffer, tcplen);
+                    memcpy(packtosend + sizeof(STCPHeader), buffer, tcplen);
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
                     DEBUG("Packet of payload size %d, ack number %d, seq number %d sent to network\n", tcplen, ctx->recv_next, ctx->send_next);
                     /* and error-check */
@@ -537,12 +538,12 @@ void our_dprintf(const char *format,...)
 
 static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len)
 {
-    STCPHeader * header = (STCPHeader *) calloc(1, sizeof(STCPHeader) + OFFSET + len);
+    STCPHeader * header = (STCPHeader *) calloc(1, sizeof(STCPHeader) + len);
 	assert(header);
     
 	header->th_flags = flags;
 	header->th_seq = htonl(seq);
-    header->th_ack = htonl(ack);
+        header->th_ack = htonl(ack);
 	header->th_off = OFFSET;
 	header->th_win = htons(WINLEN);
 	return header;
@@ -570,15 +571,15 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         DEBUG("Received packet with ack number %d (if TH_ACK set) and seq number %d\n", ntohl(header->th_ack), ntohl(header->th_seq));
         
         /* get pointer to payload, taking into account that some of this may be data we have already received */
-        payload = buff + sizeof(STCPHeader) + header->th_off;
+        payload = buff + (WORDSIZE * header->th_off);
         if(packlen == sizeof(STCPHeader))
             paylen = 0;
-        else if(buffsize <= packlen - (sizeof(STCPHeader) + header->th_off)){
+        else if(buffsize <= packlen - (WORDSIZE * header->th_off)){
             DEBUG("buffer too small, packet truncated\n");
             paylen = buffsize;
         }
         else
-            paylen = packlen - (sizeof(STCPHeader) + header->th_off);
+            paylen = packlen - (WORDSIZE * header->th_off);
         
         /* update context */
         
