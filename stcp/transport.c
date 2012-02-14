@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <netinet/in.h>
+#include <unistd.h>
 #include "mysock.h"
 #include "stcp_api.h"
 #include "transport.h"
@@ -62,7 +63,7 @@ static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
 void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize);
 static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len);
-size_t recv_packet(mysocket_t sd, context_t context, void *recvbuff, size_t buffsize, (STCPHeader *)header)
+int recv_packet(mysocket_t sd, context_t context, void *recvbuff, size_t buffsize, STCPHeader *header);
 
 
 
@@ -244,9 +245,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     uint8_t flags;
     uint16_t winsize = WINLEN;
     int tcplen;
-    void packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ network_recv */
-    void payload[MAXLEN];
-    STCPHeader in_header = [sizeof(STCPHeader)];
+    char packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ network_recv */
+    char payload[MAXLEN];
+    STCPHeader *in_header;
     void *packtosend;
     
     while (!ctx->done)
@@ -281,7 +282,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader) + OFFSET, buffer, tcplen);
                     stcp_network_send(sd, packtosend, sizeof(packtosend), NULL);
-                    DEBUG("Packet of length %d sent to network\n", sizeof(packtosend));
+                    DEBUG("Packet of length %l sent to network\n", sizeof(packtosend));
                     /* and error-check */
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
@@ -296,9 +297,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         if (event & NETWORK_DATA)
         {
             DEBUG("Network Data\n");
+            in_header = malloc(sizeof(STCPHeader));
             
             /* network data transmission */
-            int data_size = network_recv(sd, context, payload, MAXLEN, in_header);
+            int data_size = network_recv(sd, ctx, payload, MAXLEN, in_header);
             
             DEBUG("Received net data size is %d\n", data_size);
             
@@ -326,18 +328,21 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 if(ctx->connection_state == CSTATE_CLOSE_WAIT){
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
+                    free(in_header);
                     break;
                 }
                 
                 if(ctx->connection_state == CSTATE_LAST_ACK) {
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
+                    free(in_header);
                     break;
                 }
                 
                 if(ctx->connection_state == CSTATE_CLOSING){
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
+                    free(in_header);
                     break;
                 }
                     
@@ -361,6 +366,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 if (ctx->connection_state == CSTATE_FIN_WAIT2) {
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
+                    free(in_header);
                     break;
                 }
                 
@@ -371,6 +377,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     
                     ctx->connection_state = CSTATE_CLOSING;
                 }
+                free(in_header);
             }
             /*
             if (!(header->th_flags))
@@ -544,7 +551,7 @@ static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, in
 
 /* call stcp_network_recv, error-check, update context, return packet header in header and payload in recvbuff. Return value is size of payload*/
 /* need to change this to work with new variables */
-size_t recv_packet(mysocket_t sd, context_t context, void *recvbuff, size_t buffsize, (STCPHeader *)header){
+size_t recv_packet(mysocket_t sd, context_t context, void *recvbuff, size_t buffsize, STCPHeader *header){
     size_t packlen, paylen, send_win;
     void *payload;
     uint8_t flags;
