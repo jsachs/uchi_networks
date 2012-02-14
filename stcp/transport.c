@@ -278,9 +278,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 if( tcplen > 0 ) {
                     DEBUG("Application data size: %d\n", tcplen);
                     /*create and send packet*/
-                    packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, tcplen);
+                    packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader) + OFFSET, buffer, tcplen);
-                    stcp_network_send(sd, packtosend, sizeof(packtosend), NULL);
+                    stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
                     DEBUG("Packet of length %ld sent to network\n", sizeof(packtosend));
                     /* and error-check */
                     /* update window length and send_next */
@@ -536,7 +536,7 @@ void our_dprintf(const char *format,...)
 
 static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len)
 {
-    STCPHeader * header = (STCPHeader *) calloc(1, sizeof(STCPHeader) + len);
+    STCPHeader * header = (STCPHeader *) calloc(1, sizeof(STCPHeader) + OFFSET + len);
 	assert(header);
     
 	header->th_flags = flags;
@@ -596,7 +596,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         else
             paylen = 0;
         /* also update sender window size */
-        send_win = ntohl(header->th_win) - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
+        send_win = ntohs(header->th_win) - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
         if (send_win <= WINLEN)
             ctx->send_wind = send_win;
         else
