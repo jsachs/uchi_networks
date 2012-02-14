@@ -130,6 +130,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                         DEBUG("packet recieved with seq %d and ack %d\n", ntohl(header->th_seq), ntohl(header->th_ack));
                         if(ntohl(header->th_ack) == ctx->send_next){
                             
+                            ctx->send_unack++;
                             ctx->recv_next = ntohl(header->th_seq) + 1;
                             header = make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
                             tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
@@ -171,7 +172,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     ctx->recv_next = ntohl(header->th_seq) + 1;
                     ctx->send_wind = ntohs(header->th_win);
                     
-                    header = make_stcp_packet(TH_SYN|TH_ACK, ctx->send_next, ctx->recv_next, 0);
+                    header = make_stcp_packet(TH_SYN|TH_ACK, ctx->send_unack, ctx->recv_next, 0);
                     tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 
                     DEBUG("SYN/ACK sent with ack number %d and seq number %d\n", htonl(header->th_ack), htonl(header->th_seq));
@@ -180,7 +181,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
                         errno = ECONNABORTED;
                         break;
                     }
-                    /*else ctx->send_unack += 1;*/
                 }
             }
         }
@@ -194,7 +194,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     DEBUG("Did not receieve ACK packet\n");
                     continue;
                 }
-                if(ntohl(header->th_ack) == ctx->send_unack) {
+                if(ntohl(header->th_ack) == ctx->send_next) {
+                    ctx->send_unack++;
                     DEBUG("Received ACK with ack number %d\n", ntohl(header->th_ack));
                     ctx->connection_state = CSTATE_ESTABLISHED;
                 }
@@ -202,7 +203,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
     }
     if(ctx->connection_state == CSTATE_ESTABLISHED)
-		DEBUG("State: seq %d ack %d send window %d\n", ctx->send_unack, ctx->recv_next, ctx->send_wind);
+		DEBUG("State: seq %d ack %d send window %d\n", ctx->send_next, ctx->recv_next, ctx->send_wind);
     
     
     /* potentially handle error conditions */
