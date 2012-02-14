@@ -24,6 +24,7 @@
 
 
 #define MAXLEN 536
+#define MAXOPS 40
 #define OFFSET 5
 #define HEADERSIZE 20
 #define WINLEN 3072
@@ -54,7 +55,6 @@ typedef struct
     tcp_seq send_wind;
     tcp_seq recv_next;
     tcp_seq recv_wind;
-    tcp_seq adv_wind;
 } context_t;
 
 
@@ -62,6 +62,7 @@ static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
 void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize);
 static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len);
+size_t recv_packet(mysocket_t sd, context_t context, void *recvbuff, size_t buffsize, (STCPHeader *)header)
 
 
 
@@ -116,7 +117,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 
                 if(event & NETWORK_DATA)
                 {
-                    tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
+                    tcplen = network_recv(sd, buffer, sizeof(buffer));
                     flags = (TH_SYN|TH_ACK);
                     header = (STCPHeader *) buffer;
                     if(( tcplen < sizeof(STCPHeader)) || !((header->th_flags & TH_SYN)&&(header->th_flags & TH_ACK))) {
@@ -193,7 +194,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     continue;
                 }
                 if(ntohl(header->th_ack) == ctx->send_unack) {
-                    DEBUG("Receieved ACK with ack number %d\n", ntohl(header->th_ack));
+                    DEBUG("Received ACK with ack number %d\n", ntohl(header->th_ack));
                     ctx->connection_state = CSTATE_ESTABLISHED;
                 }
             }
@@ -243,7 +244,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     uint8_t flags;
     uint16_t winsize = WINLEN;
     int tcplen;
-    char packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload */
+    void packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ network_recv */
+    void payload[MAXLEN];
+    STCPHeader in_header = [sizeof(STCPHeader)];
     void *packtosend;
     
     while (!ctx->done)
@@ -259,144 +262,212 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         {
             DEBUG("Application Data\n");
             /* the application has requested that data be sent */
-            /* see stcp_app_recv() */
-            if(ctx->send_next < ctx->send_wind)
+            /* we should send as long as send_wind > 0, right? */
+            if(ctx->send_wind > 0)
             {
                 int send_size;
                 
+                /* only read in as much from app as we can send */
                 if(ctx->send_wind > MAXLEN) send_size = MAXLEN;
 				else send_size = ctx->send_wind;
                 
-                char * buffer = (char *) calloc(1, send_size);
+                void* buffer = (char *) calloc(1, send_size);
                 
                 tcplen = stcp_app_recv(sd, buffer, send_size);
                 
                 if( tcplen > 0 ) {
                     DEBUG("Application data size: %d\n", tcplen);
+                    /*create and send packet*/
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader) + OFFSET, buffer, tcplen);
                     stcp_network_send(sd, packtosend, sizeof(packtosend), NULL);
+                    DEBUG("Packet of length %d sent to network\n", sizeof(packtosend));
                     /* and error-check */
+                    /* update window length and send_next */
+                    ctx->send_next += tcplen;
+                    ctx->send_wind -= tcplen;
                 }
                 free(buffer);
                 free(packtosend);
             }
-            else DEBUG("Could not send application data");
+            else DEBUG("Could not get application data\n");
         }
         
         if (event & NETWORK_DATA)
         {
             DEBUG("Network Data\n");
+            
             /* network data transmission */
-            /* see stcp_network_recv() */
+            int data_size = network_recv(sd, context, payload, MAXLEN, in_header);
             
-            tcplen = stcp_network_recv(sd, packet, sizeof(packet));
+            DEBUG("Received net data size is %d\n", data_size);
             
-            if( tcplen >= sizeof(STCPHeader) )
-            {
-                STCPHeader *header = (STCPHeader *)packet;
-                DEBUG("Receieved packet with seq %d and ack %d\n", ntohl(header->th_seq), ntohl(header->th_ack));
+            
+            /* send ACK as long as it's not past our window, and actually contained data */
+            if(ctx->recv_next >= ntohl(in_header->th_seq) && data_size > 0){
+                packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
+                stcp_network_send(sd, packtosend, sizeof(STCPHeader), NULL);
+                free(packtosend);
+            }
+            
+            /* send payload to application, if it's valid */
+            if(payload){
+                DEBUG("Sent data of size %d to application\n", data_size);
+                stcp_app_send(sd, payload, data_size);
+            }
+            
+            /* deal with connection teardown, if need be */
+            if (in_header->th_flags & TH_ACK){
+                if(ctx->connection_state == CSTATE_FIN_WAIT1){
+                    DEBUG("State: FIN-WAIT2\n");
+                    ctx->connection_state = CSTATE_FIN_WAIT2;
+                }
                 
-                /* update the sliding window here */
-                int data_size = tcplen - (header->th_off);
-                DEBUG("Received net data size is %d\n", data_size);
+                if(ctx->connection_state == CSTATE_CLOSE_WAIT){
+                    DEBUG("State: CLOSED\n");
+                    ctx->connection_state = CSTATE_CLOSED;
+                    break;
+                }
                 
-                if (!(header->th_flags))
-                {
-		   if(ntohl(header->th_seq) == ctx->recv_next) {
-						stcp_app_send(sd, header + (header->th_off), data_size);
-						ctx->recv_next += data_size;
-                        
-						header = make_stcp_packet(TH_ACK, (ctx->send_unack)+(ctx->send_next), ctx->recv_next, 0);
-						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-						free(header);
-					} 
-                    else if(ntohl(header->th_seq) < ctx->recv_next + WINLEN) { /* data is ack'd but not sent to app */
-						header = make_stcp_packet(TH_ACK, (ctx->send_unack)+(ctx->send_next), ctx->recv_next, 0);
-						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-						free(header);
-					}
+                if(ctx->connection_state == CSTATE_LAST_ACK) {
+                    DEBUG("State: CLOSED\n");
+                    ctx->connection_state = CSTATE_CLOSED;
+                    break;
                 }
-                else if (header->th_flags & TH_ACK)
-                {
-                    if((ntohl(header->th_ack) > ctx->send_unack) && (ntohl(header->th_ack) <= (ctx->send_unack)+(ctx->send_next))) {
-						int shift = ntohl(header->th_ack) - (ctx->send_unack);
-						ctx->send_unack = ntohl(header->th_ack);
-						ctx->send_next = ctx->send_next - shift;
-					}
-					if(ctx->connection_state == CSTATE_FIN_WAIT1) {
-						DEBUG("State: FIN-WAIT2\n");
-						ctx->connection_state = CSTATE_FIN_WAIT2;
-					}
-                    
-					if(ctx->connection_state == CSTATE_CLOSE_WAIT) {
-						DEBUG("State: CLOSED\n");
-                        ctx->connection_state = CSTATE_CLOSED;
-						break;
-					}
-                    
-					if(ctx->connection_state == CSTATE_LAST_ACK) {
-						DEBUG("State: CLOSED\n");
-                        ctx->connection_state = CSTATE_CLOSED;
-						break;
-					}
+                
+                if(ctx->connection_state == CSTATE_CLOSING){
+                    DEBUG("State: CLOSED\n");
+                    ctx->connection_state = CSTATE_CLOSED;
+                    break;
                 }
-                else if (header->th_flags & TH_FIN)
-                {
-                    if(ctx->connection_state == CSTATE_ESTABLISHED) {
-						DEBUG("Receiveing FIN packet\n");
-						/* send ack */
-						ctx->recv_next += 1;
-						STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
-						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-						free(header);
-                        
-						/* inform app */
-						stcp_fin_received(sd);
-                        
-						ctx->connection_state = CSTATE_CLOSE_WAIT;
-						DEBUG("State: CLOSE-WAIT\n");
-					}
                     
-					if(ctx->connection_state == CSTATE_FIN_WAIT1) {
-                        
-						ctx->recv_next += 1;
-						STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
-						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-						free(header);
-                        
-						/* inform app */
-						stcp_fin_received(sd);
-                        
-						/* send ack */
-						ctx->connection_state = CSTATE_CLOSING;
-                        
-						DEBUG("State: CLOSING\n");
-					}
+            }
+            if (in_header->th_flags & TH_FIN){
+                DEBUG("Received FIN packet\n");
+                /* Acknowledge FIN, which counts as a byte */
+                ctx->recv_next++;
+                packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
+                stcp_network_send(sd, packtosend, sizeof(STCPHeader), NULL);
+                /*error check*/
+                
+                if (ctx->connection_state == CSTATE_ESTABLISHED){
+                    DEBUG("State: CLOSE_WAIT\n");
+                    /* inform app */
+                    stcp_fin_received(sd);
                     
-					if(ctx->connection_state == CSTATE_FIN_WAIT2) {
-					  /* send ack */
-						ctx->recv_next += 1;
-						STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
-						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-						free(header);
-                        
-						break;
-					}
+                    ctx->connection_state = CSTATE_CLOSE_WAIT;
                 }
-                else if (header->th_flags == (TH_ACK|TH_FIN))
-                {
-                    if(ctx->connection_state == CSTATE_FIN_WAIT1) {
-                        
-						STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
-						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-						free(header);
-                        
-						break;
-					}
+                
+                if (ctx->connection_state == CSTATE_FIN_WAIT2) {
+                    DEBUG("State: CLOSED\n");
+                    ctx->connection_state = CSTATE_CLOSED;
+                    break;
+                }
+                
+                if (ctx->connection_state == CSTATE_FIN_WAIT1){
+                    DEBUG("State: CLOSING\n");
+                    /* inform app */
+                    stcp_fin_received(sd);
+                    
+                    ctx->connection_state = CSTATE_CLOSING;
                 }
             }
-            else DEBUG("Invalid Packet Length\n");
+            /*
+            if (!(header->th_flags))
+            {
+                    if(ntohl(header->th_seq) == ctx->recv_next) {
+                    stcp_app_send(sd, header + (header->th_off), data_size);
+                    ctx->recv_next += data_size;
+                    
+                    header = make_stcp_packet(TH_ACK, (ctx->send_unack)+(ctx->send_next), ctx->recv_next, 0);
+                    stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                    free(header);
+                } 
+                else if(ntohl(header->th_seq) < ctx->recv_next + WINLEN) { /* data is ack'd but not sent to app */
+                    /*header = make_stcp_packet(TH_ACK, (ctx->send_unack)+(ctx->send_next), ctx->recv_next, 0);
+                    stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                    free(header);
+                }
+            }
+            else if (header->th_flags & TH_ACK)
+            {
+                if((ntohl(header->th_ack) > ctx->send_unack) && (ntohl(header->th_ack) <= (ctx->send_unack)+(ctx->send_next))) {
+                    int shift = ntohl(header->th_ack) - (ctx->send_unack);
+                    ctx->send_unack = ntohl(header->th_ack);
+                    ctx->send_next = ctx->send_next - shift;
+                }
+                if(ctx->connection_state == CSTATE_FIN_WAIT1) {
+                    DEBUG("State: FIN-WAIT2\n");
+                    ctx->connection_state = CSTATE_FIN_WAIT2;
+                }
+                
+                if(ctx->connection_state == CSTATE_CLOSE_WAIT) {
+                    DEBUG("State: CLOSED\n");
+                    ctx->connection_state = CSTATE_CLOSED;
+                    break;
+                }
+                
+                if(ctx->connection_state == CSTATE_LAST_ACK) {
+                    DEBUG("State: CLOSED\n");
+                    ctx->connection_state = CSTATE_CLOSED;
+                    break;
+                }
+            }
+            else if (header->th_flags & TH_FIN)
+            {
+                if(ctx->connection_state == CSTATE_ESTABLISHED) {
+                    DEBUG("Receiveing FIN packet\n");
+                    /* send ack *//*
+                    ctx->recv_next += 1;
+                    STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
+                    stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                    free(header);
+                    
+                    /* inform app *//*
+                    stcp_fin_received(sd);
+                    
+                    ctx->connection_state = CSTATE_CLOSE_WAIT;
+                    DEBUG("State: CLOSE-WAIT\n");
+                }
+                
+                if(ctx->connection_state == CSTATE_FIN_WAIT1) {
+                        
+                    ctx->recv_next += 1;
+                    STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
+                    stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                    free(header);
+                    
+                    /* inform app *//*
+                    stcp_fin_received(sd);
+                    
+                    /* send ack *//*
+                    ctx->connection_state = CSTATE_CLOSING;
+                    
+                    DEBUG("State: CLOSING\n");
+                }
+                
+                if(ctx->connection_state == CSTATE_FIN_WAIT2) {
+                    /* send ack *//*
+                    ctx->recv_next += 1;
+                    STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
+                    stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                    free(header);
+                    
+                    break;
+                }
+            }
+            else if (header->th_flags == (TH_ACK|TH_FIN))
+            {
+                if(ctx->connection_state == CSTATE_FIN_WAIT1) {
+                        
+                    STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
+                    stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                    free(header);
+                        
+                    break;
+                }
+            }
+                                   */
         }
         
         if (event & APP_CLOSE_REQUESTED)
@@ -404,8 +475,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             DEBUG("Application close requested\n");
             if(ctx->connection_state == CSTATE_ESTABLISHED)
             {
-                DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->send_unack, ctx->recv_next);
-                STCPHeader *header = make_stcp_packet(TH_FIN, ctx->send_unack, ctx->recv_next, 0);
+                /* need to send all outstanding data first */
+                DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->send_next, ctx->recv_next);
+                STCPHeader *header = make_stcp_packet(TH_FIN, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 				free(header);
                 
@@ -415,12 +487,12 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             if(ctx->connection_state == CSTATE_CLOSE_WAIT)
             {
-                DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->send_unack, ctx->recv_next);
-                STCPHeader *header = make_stcp_packet(TH_FIN, ctx->send_unack, ctx->recv_next, 0);
+                DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->send_next, ctx->recv_next);
+                STCPHeader *header = make_stcp_packet(TH_FIN, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 				free(header);
                 
-                ctx->send_unack += 1;
+                ctx->send_next += 1;
                 ctx->connection_state = CSTATE_LAST_ACK;
                 DEBUG("State: LAST-ACK\n");
             }
@@ -469,6 +541,67 @@ static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, in
 	return header;
 }
 
+
+/* call stcp_network_recv, error-check, update context, return packet header in header and payload in recvbuff. Return value is size of payload*/
+/* need to change this to work with new variables */
+size_t recv_packet(mysocket_t sd, context_t context, void *recvbuff, size_t buffsize, (STCPHeader *)header){
+    size_t packlen, paylen, send_win;
+    void *payload;
+    uint8_t flags;
+    buff = calloc(1, sizeof(STCPHeader) + MAXOPS + MAXLEN);
+    
+    /* zero out recvbuff and header so we're extra-sure there's no harm in re-using them */
+    memset(recvbuff, '\0', buffsize);
+    memset(header, '\0', sizeof(STCPHeader));
+    
+    /* receive data from network */
+    packlen = stcp_network_recv(sd, buff, sizeof(buff));
+    if (packlen >= sizeof(STCPHeader)){
+        
+        /* get packet header */
+        memcpy(header, buff, sizeof(STCPHeader));
+        DEBUG("Received packet with ack number %d (if TH_ACK set) and seq number %d", ntohl(header->th_ack), ntohl(header->th_seq));
+        
+        /* get pointer to payload, taking into account that some of this may be data we have already received */
+        payload = buff + sizeof(STCPHeader) + header->th_off;
+        if(buffsize <= packlen - (sizeof(STCPHeader) + header->th_off)){
+            DEBUG("buffer too small, packet truncated");
+            paylen = buffsize;
+        }
+        else
+            paylen = packlen - (sizeof(STCPHeader) + header->th_off);
+        
+        /* update context */
+        
+        /* if packet acknowledges previously unacknowledged data, update send_unack */
+        if ((header->flags & TH_ACK) && ctx->send_unack < ntohl(header->th_ack))
+            ctx->send_unack = ntohl(header->th_ack);
+        
+        /* update recv_next if this is the packet includes new data. If it's all old, we ack but ignore. If it starts past recv_next, we just ignore. */
+        if ( ntohl(header->th_seq) <= ctx->recv_next <= ntohl(header->th_seq) + paylen){
+            /* how much of the data in the packet have we already gotten? */
+            int old = ctx->recv_next - ntohl(header->th_seq);
+            payload += old;
+            paylen -= old;
+            ctx->recv_next += paylen;
+            /* now that payload points only to new data, copy it into recvbuff */
+            memcpy(recvbuff, payload, paylen);
+        }
+        else
+            paylen = 0;
+        /* also update sender window size */
+        send_win = ntohl(header->th_win) - (send_next - send_unack); /* advertised sender window minus data still in transit to sender */
+        if (send_win <= WINLEN)
+            ctx->send_window = send_win;
+        else
+            ctx->send_window = WINLEN;
+    }
+    else
+        DEBUG("Error: invalid packet length");
+    
+    free(buff);
+    return paylen;
+}
 
 
 
