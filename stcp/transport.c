@@ -243,7 +243,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 {
     assert(ctx);
     uint8_t flags;
-    uint16_t winsize = WINLEN;
     int tcplen;
     char packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ network_recv */
     char payload[MAXLEN];
@@ -551,11 +550,11 @@ static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, in
 
 /* call stcp_network_recv, error-check, update context, return packet header in header and payload in recvbuff. Return value is size of payload*/
 /* need to change this to work with new variables */
-size_t recv_packet(mysocket_t sd, context_t context, void *recvbuff, size_t buffsize, STCPHeader *header){
+size_t recv_packet(mysocket_t sd, context_t ctx, void *recvbuff, size_t buffsize, STCPHeader *header){
     size_t packlen, paylen, send_win;
     void *payload;
     uint8_t flags;
-    buff = calloc(1, sizeof(STCPHeader) + MAXOPS + MAXLEN);
+    void *buff = calloc(1, sizeof(STCPHeader) + MAXOPS + MAXLEN);
     
     /* zero out recvbuff and header so we're extra-sure there's no harm in re-using them */
     memset(recvbuff, '\0', buffsize);
