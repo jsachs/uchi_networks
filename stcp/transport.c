@@ -281,7 +281,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader) + OFFSET, buffer, tcplen);
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
-                    DEBUG("Packet of length %ld sent to network\n", sizeof(packtosend));
+                    DEBUG("Packet of payload size %d sent to network\n", tcplen);
                     /* and error-check */
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
@@ -561,7 +561,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
     memset(header, '\0', sizeof(STCPHeader));
     
     /* receive data from network */
-    packlen = stcp_network_recv(sd, buff, sizeof(buff));
+    packlen = stcp_network_recv(sd, buff, sizeof(STCPHeader) + MAXOPS + MAXLEN);
     if (packlen >= sizeof(STCPHeader)){
         
         /* get packet header */
