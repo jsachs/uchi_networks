@@ -60,7 +60,7 @@ typedef struct
 static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
 void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize);
-static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len)
+static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len);
 
 
 
@@ -161,8 +161,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 {
                     DEBUG("Received SYN with seq number %d\n", ntohl(header->th_seq));
                     ctx->connection_state = CSTATE_SYN_RECEIVED;
-                    
-                    ctx->connection_state = SYN_RCVD;
+
                     ctx->send_unack = ctx->initial_sequence_num;
                     ctx->send_next = 0;
                     ctx->recv_next = ntohl(header->th_seq) + 1;
@@ -259,7 +258,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             {
                 int send_size = MAXLEN;
                 
-                if((ctx->send_wind)-(ctx->send.next) > MAXLEN) send_size = MAXLEN;
+                if((ctx->send_wind)-(ctx->send_next) > MAXLEN) send_size = MAXLEN;
 				else send_size = ctx->send_wind - ctx->send_next;
                 
                 char * buffer = (char *) calloc(1, send_size);
@@ -297,17 +296,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 
                 if (!(header->th_flags))
                 {
-                    DEBUG("Recv Next Number: %d\n", ctx->seq_num_outgoing);
-					if(ntohl(header->th_seq) == ctx->recv_next) {
+		   if(ntohl(header->th_seq) == ctx->recv_next) {
 						stcp_app_send(sd, header + (header->th_off), data_size);
 						ctx->recv_next += data_size;
                         
-						header = generate_tcp_packet(TH_ACK, (ctx->send_unack)+(ctx->send_next), ctx->recv_next, 0);
+						header = make_stcp_packet(TH_ACK, (ctx->send_unack)+(ctx->send_next), ctx->recv_next, 0);
 						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 						free(header);
 					} 
                     else if(ntohl(header->th_seq) < ctx->recv_next + WINLEN) { /* data is ack'd but not sent to app */
-						header = generate_tcp_packet(TH_ACK, (ctx->send_unack)+(ctx->send_next), ctx->recv_next, 0);
+						header = make_stcp_packet(TH_ACK, (ctx->send_unack)+(ctx->send_next), ctx->recv_next, 0);
 						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 						free(header);
 					}
@@ -340,13 +338,13 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 {
                     if(ctx->connection_state == CSTATE_ESTABLISHED) {
 						DEBUG("Receiveing FIN packet\n");
-						// send ack
+						/* send ack */
 						ctx->recv_next += 1;
 						STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
 						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 						free(header);
                         
-						// inform app
+						/* inform app */
 						stcp_fin_received(sd);
                         
 						ctx->connection_state = CSTATE_CLOSE_WAIT;
@@ -360,17 +358,17 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 						free(header);
                         
-						// inform app
+						/* inform app */
 						stcp_fin_received(sd);
                         
-						// send ack;
+						/* send ack */
 						ctx->connection_state = CSTATE_CLOSING;
                         
 						DEBUG("State: CLOSING\n");
 					}
                     
 					if(ctx->connection_state == CSTATE_FIN_WAIT2) {
-						// send ack
+					  /* send ack */
 						ctx->recv_next += 1;
 						STCPHeader *header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
 						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
@@ -415,7 +413,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 				free(header);
                 
-                ctx->seq_unack += 1;
+                ctx->send_unack += 1;
                 ctx->connection_state = CSTATE_LAST_ACK;
                 DEBUG("State: LAST-ACK\n");
             }
