@@ -282,7 +282,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader) + OFFSET, buffer, tcplen);
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
-                    DEBUG("Packet of payload size %d sent to network\n", tcplen);
+                    DEBUG("Packet of payload size %d, ack number %d, seq number %d sent to network\n", tcplen, ctx->recv_next, ctx->send_next);
                     /* and error-check */
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
@@ -571,8 +571,10 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         
         /* get pointer to payload, taking into account that some of this may be data we have already received */
         payload = buff + sizeof(STCPHeader) + header->th_off;
-        if(buffsize <= packlen - (sizeof(STCPHeader) + header->th_off)){
-            DEBUG("buffer too small, packet truncated");
+        if(packlen == sizeof(STCPHeader))
+            paylen = 0;
+        else if(buffsize <= packlen - (sizeof(STCPHeader) + header->th_off)){
+            DEBUG("buffer too small, packet truncated\n");
             paylen = buffsize;
         }
         else
