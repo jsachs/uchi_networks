@@ -63,7 +63,7 @@ static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
 void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize);
 static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len);
-int recv_packet(mysocket_t sd, context_t context, void *recvbuff, size_t buffsize, STCPHeader *header);
+int recv_packet(mysocket_t sd, context_t *context, void *recvbuff, size_t buffsize, STCPHeader *header);
 
 
 
@@ -118,7 +118,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 
                 if(event & NETWORK_DATA)
                 {
-                    tcplen = recv_packet(sd, buffer, sizeof(buffer));
+                    tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
                     flags = (TH_SYN|TH_ACK);
                     header = (STCPHeader *) buffer;
                     if(( tcplen < sizeof(STCPHeader)) || !((header->th_flags & TH_SYN)&&(header->th_flags & TH_ACK))) {
@@ -584,7 +584,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
             ctx->send_unack = ntohl(header->th_ack);
         
         /* update recv_next if this is the packet includes new data. If it's all old, we ack but ignore. If it starts past recv_next, we just ignore. */
-        if ( ntohl(header->th_seq) <= ctx->recv_next <= ntohl(header->th_seq) + paylen){
+        if ( (ntohl(header->th_seq) <= ctx->recv_next) && (ctx->recv_next <= ntohl(header->th_seq) + paylen)){
             /* how much of the data in the packet have we already gotten? */
             int old = ctx->recv_next - ntohl(header->th_seq);
             payload += old;
@@ -598,9 +598,9 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         /* also update sender window size */
         send_win = ntohl(header->th_win) - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
         if (send_win <= WINLEN)
-            ctx->send_window = send_win;
+            ctx->send_wind = send_win;
         else
-            ctx->send_window = WINLEN;
+            ctx->send_wind = WINLEN;
     }
     else
         DEBUG("Error: invalid packet length");
