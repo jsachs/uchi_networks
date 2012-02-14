@@ -108,7 +108,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
         else
         {
-            ctx->send_unack += 1;
+            /*ctx->send_unack = 1;*/
             ctx->send_next = ctx->send_unack + 1;
             ctx->connection_state = CSTATE_SYN_SENT;
             
@@ -128,9 +128,9 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     else
                     {
                         DEBUG("packet recieved with seq %d and ack %d\n", ntohl(header->th_seq), ntohl(header->th_ack));
-                        if(ntohl(header->th_ack) == ctx->send_unack){
+                        if(ntohl(header->th_ack) == ctx->send_next){
                             
-                            ctx->recv_next = ntohl(header->th_seq) + 2;
+                            ctx->recv_next = ntohl(header->th_seq) + 1;
                             header = make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
                             tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
                             DEBUG("Sent ACK packet with seq number %d\n", ntohl(header->th_seq));
@@ -168,7 +168,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
                     ctx->send_unack = ctx->initial_sequence_num;
                     ctx->send_next = ctx->send_unack + 1;
-                    ctx->recv_next = ntohl(header->th_seq) + 2;
+                    ctx->recv_next = ntohl(header->th_seq) + 1;
                     ctx->send_wind = ntohs(header->th_win);
                     
                     header = make_stcp_packet(TH_SYN|TH_ACK, ctx->send_next, ctx->recv_next, 0);
@@ -180,7 +180,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                         errno = ECONNABORTED;
                         break;
                     }
-                    else ctx->send_unack += 1;
+                    /*else ctx->send_unack += 1;*/
                 }
             }
         }
