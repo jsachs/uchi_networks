@@ -37,7 +37,8 @@ enum { CSTATE_ESTABLISHED,
        CSTATE_FIN_WAIT2,
        CSTATE_CLOSE_WAIT,
        CSTATE_LAST_ACK,
-       CSTATE_CLOSED };    /* obviously you should have more states */
+       CSTATE_CLOSING,
+       CSTATE_CLOSED };
 
 
 /* this structure is global to a mysocket descriptor */
@@ -219,7 +220,8 @@ static void generate_initial_seq_num(context_t *ctx)
     ctx->initial_sequence_num = 1;
 #else
     /* you have to fill this up */
-    
+    unsigned int iseed = (unsigned int)time(NULL) + getpid();
+	srand (iseed);
     ctx->initial_sequence_num = rand()%MAX_INIT_SEQ;
 #endif
 }
@@ -273,6 +275,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 DEBUG("Could not send application data");
             }
         }
+        
         if (event & NETWORK_DATA)
         {
             DEBUG("Network Data\n");
@@ -291,33 +294,130 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 
                 if (header->th_flags == 0)
                 {
-                    
+                    DEBUG("Recv Next Number: %d\n", ctx->seq_num_outgoing);
+					if(ntohl(header->th_seq) == ctx->seq_num_outgoing) {
+						stcp_app_send(sd, header + header->th_off, data_len);
+						ctx->seq_num_outgoing += data_len;
+                        
+						header = generate_tcp_packet(TH_ACK, ctx, 0);
+						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+						free(header);
+					} 
+                    else if(ntohl(header->th_seq) < ctx->seq_num_outgoing + WINLEN) { /* data is ack'd but not sent to app */
+						header = generate_tcp_packet(TH_ACK, ctx, 0);
+						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+						free(header);
+					}
                 }
                 else if (header->th_flags & TH_ACK)
                 {
+                    if((ntohl(header->th_ack) > ctx->seq_num_outgoing) && ntohl(header->th_ack) <= ctx->seq_num_outgoing) {
+						int shift = ntohl(header->th_ack) - ctx->seq_num_outgoing;
+						ctx->ack_num_incoming = ntohl(header->th_ack);
+						ctx->seq_num_outgoing = ctx->seq_num_outgoing - shift;
+						DEBUG("Received ACK %d: Updating sender window\n", ntohl(header->th_ack));
+					}
                     
+					if(ctx->connection_state == CSTATE_FIN_WAIT1) {
+						DEBUG("State: FIN-WAIT2\n");
+						ctx->connection_state = CSTATE_FIN_WAIT2;
+					}
+                    
+					if(ctx->connection_state == CSTATE_CLOSE_WAIT) {
+						DEBUG("State: CLOSED\n");
+                        ctx->connection_state = CSTATE_CLOSED;
+						break;
+					}
+                    
+					if(ctx->connection_state == CSTATE_LAST_ACK) {
+						DEBUG("State: CLOSED\n");
+                        ctx->connection_state = CSTATE_CLOSED;
+						break;
+					}
                 }
                 else if (header->th_flags & TH_FIN)
                 {
+                    if(ctx->connection_state == CSTATE_ESTABLISHED) {
+						DEBUG("Receiveing FIN from peer\n");
+						// send ack
+						ctx->seq_num_outgoing += 1;
+						STCPHeader *header = make_stcp_packet(TH_ACK, ctx, 0);
+						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+						free(header);
+                        
+						// inform app
+						stcp_fin_received(sd);
+                        
+						ctx->connection_state = CSTATE_CLOSE_WAIT;
+						DEBUG("State: CLOSE-WAIT \n");
+					}
                     
+					if(ctx->connection_state == CSTATE_FIN_WAIT1) {
+                        
+						ctx->seq_num_outgoing += 1;
+						STCPHeader *header = make_stcp_packet(TH_ACK, ctx, 0);
+						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+						free(header);
+                        
+						// inform app
+						stcp_fin_received(sd);
+                        
+						// send ack;
+						ctx->connection_state = CSTATE_LAST_ACK;
+                        
+						DEBUG("State = LAST-ACK\n");
+					}
+                    
+					if(ctx->connection_state == CSTATE_FIN_WAIT2) {
+						// send ack
+						ctx->seq_num_outgoing += 1;
+						STCPHeader *header = make_stcp_packet(TH_ACK, ctx, 0);
+						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+						free(header);
+                        
+						break;
+					}
                 }
                 else if (header->th_flags == (TH_ACK|TH_FIN))
                 {
-                    
+                    if(ctx->connection_state == CSTATE_FIN_WAIT1) {
+                        
+						STCPHeader *header = make_stcp_packet(TH_ACK, ctx, 0);
+						stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+						free(header);
+                        
+						break;
+					}
                 }
-                
+                /*DEBUG("STATE: Seq %d Ack Seq %d\n", ctx->send.unac + ctx->send.next, ctx->recv.next);*/
             }
+            else DEBUG("Invalid Packet Length\n");
         }
+        
         if (event & APP_CLOSE_REQUESTED)
         {
             DEBUG("Application close requested\n");
             if(ctx->connection_state == CSTATE_ESTABLISHED)
             {
+                DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->seq_num_outgoing, ctx->ack_num_outgoing);
+                STCPHeader *header = make_stcp_packet(TH_FIN, ctx, 0);
+                stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+				free(header);
                 
+                ctx->seq_num_outgoing += 1;
+                ctx->connection_state = CSTATE_FIN_WAIT1;
+                DEBUG("State is FIN-WAIT1\n");
             }
             if(ctx->connection_state == CSTATE_CLOSE_WAIT)
             {
+                DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->seq_num_outgoing, ctx->ack_num_outgoing);
+                STCPHeader *header = make_stcp_packet(TH_FIN, ctx, 0);
+                stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+				free(header);
                 
+                ctx->seq_num_outgoing += 1;
+                ctx->connection_state = CSTATE_LAST_ACK;
+                DEBUG("State is LAST-ACK\n");
             }
         }
     }
@@ -358,26 +458,12 @@ static STCPHeader * make_stcp_packet(uint8_t flags, context_t *ctx, int len)
     
 	header->th_flags = flags;
 	header->th_seq = htonl(ctx->seq_num_outgoing);
-        header->th_ack = htonl(ctx->ack_num_outgoing);
+    header->th_ack = htonl(ctx->ack_num_outgoing);
 	header->th_off = OFFSET;
 	header->th_win = htons(WINLEN);
 	return header;
 }
 
 
-static void * get_tcp_data(void *packet)
-{
-    void *data = ((char *) packet) + (((STCPHeader *) packet)->th_off * sizeof(uint32_t));
-    return data;
-}
-                          
 
-
-                           
-                           
-                           
-                           
-                           
-                           
-                           
 
