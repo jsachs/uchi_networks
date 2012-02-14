@@ -54,6 +54,7 @@ typedef struct
     tcp_seq send_wind;
     tcp_seq recv_next;
     tcp_seq recv_wind;
+    tcp_seq adv_wind;
 } context_t;
 
 
@@ -243,6 +244,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     uint16_t winsize = WINLEN;
     int tcplen;
     char packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload */
+    void *packtosend;
     
     while (!ctx->done)
     {
@@ -260,10 +262,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             /* see stcp_app_recv() */
             if(ctx->send_next < ctx->send_wind)
             {
-                int send_size = MAXLEN;
+                int send_size;
                 
-                if((ctx->send_wind)-(ctx->send_next) > MAXLEN) send_size = MAXLEN;
-				else send_size = ctx->send_wind - ctx->send_next;
+                if(ctx->send_wind > MAXLEN) send_size = MAXLEN;
+				else send_size = ctx->send_wind;
                 
                 char * buffer = (char *) calloc(1, send_size);
                 
@@ -271,12 +273,13 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 
                 if( tcplen > 0 ) {
                     DEBUG("Application data size: %d\n", tcplen);
-                    /* deal with app data
-                     * there will need to be some fancy
-                     * while loop to get app data
-                     */
+                    packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, tcplen);
+                    memcpy(packtosend + sizeof(STCPHeader) + OFFSET, buffer, tcplen);
+                    stcp_network_send(sd, packtosend, sizeof(packtosend), NULL);
+                    /* and error-check */
                 }
                 free(buffer);
+                free(packtosend);
             }
             else DEBUG("Could not send application data");
         }
