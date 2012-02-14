@@ -118,7 +118,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 
                 if(event & NETWORK_DATA)
                 {
-                    tcplen = network_recv(sd, buffer, sizeof(buffer));
+                    tcplen = recv_packet(sd, buffer, sizeof(buffer));
                     flags = (TH_SYN|TH_ACK);
                     header = (STCPHeader *) buffer;
                     if(( tcplen < sizeof(STCPHeader)) || !((header->th_flags & TH_SYN)&&(header->th_flags & TH_ACK))) {
@@ -244,7 +244,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     assert(ctx);
     uint8_t flags;
     int tcplen;
-    char packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ network_recv */
+    char packet[sizeof(STCPHeader) + 40 + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ recv_packet */
     char payload[MAXLEN];
     STCPHeader *in_header;
     void *packtosend;
@@ -281,7 +281,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader) + OFFSET, buffer, tcplen);
                     stcp_network_send(sd, packtosend, sizeof(packtosend), NULL);
-                    DEBUG("Packet of length %l sent to network\n", sizeof(packtosend));
+                    DEBUG("Packet of length %ld sent to network\n", sizeof(packtosend));
                     /* and error-check */
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
@@ -299,7 +299,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             in_header = malloc(sizeof(STCPHeader));
             
             /* network data transmission */
-            int data_size = network_recv(sd, ctx, payload, MAXLEN, in_header);
+            int data_size = recv_packet(sd, ctx, payload, MAXLEN, in_header);
             
             DEBUG("Received net data size is %d\n", data_size);
             
@@ -312,7 +312,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             
             /* send payload to application, if it's valid */
-            if(payload){
+            if(data_size){
                 DEBUG("Sent data of size %d to application\n", data_size);
                 stcp_app_send(sd, payload, data_size);
             }
@@ -550,7 +550,7 @@ static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, in
 
 /* call stcp_network_recv, error-check, update context, return packet header in header and payload in recvbuff. Return value is size of payload*/
 /* need to change this to work with new variables */
-size_t recv_packet(mysocket_t sd, context_t ctx, void *recvbuff, size_t buffsize, STCPHeader *header){
+int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, STCPHeader *header){
     size_t packlen, paylen, send_win;
     void *payload;
     uint8_t flags;
@@ -580,7 +580,7 @@ size_t recv_packet(mysocket_t sd, context_t ctx, void *recvbuff, size_t buffsize
         /* update context */
         
         /* if packet acknowledges previously unacknowledged data, update send_unack */
-        if ((header->flags & TH_ACK) && ctx->send_unack < ntohl(header->th_ack))
+        if ((header->th_flags & TH_ACK) && ctx->send_unack < ntohl(header->th_ack))
             ctx->send_unack = ntohl(header->th_ack);
         
         /* update recv_next if this is the packet includes new data. If it's all old, we ack but ignore. If it starts past recv_next, we just ignore. */
@@ -596,7 +596,7 @@ size_t recv_packet(mysocket_t sd, context_t ctx, void *recvbuff, size_t buffsize
         else
             paylen = 0;
         /* also update sender window size */
-        send_win = ntohl(header->th_win) - (send_next - send_unack); /* advertised sender window minus data still in transit to sender */
+        send_win = ntohl(header->th_win) - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
         if (send_win <= WINLEN)
             ctx->send_window = send_win;
         else
