@@ -130,7 +130,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                         DEBUG("packet recieved with seq %d and ack %d\n", ntohl(header->th_seq), ntohl(header->th_ack));
                         if(ntohl(header->th_ack) == ctx->send_unack){
                             
-                            ctx->recv_next = ntohl(header->th_seq) + 1;
+                            ctx->recv_next = ntohl(header->th_seq) + 2;
                             header = make_stcp_packet(TH_ACK, ctx->send_unack, ctx->recv_next, 0);
                             tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
                             DEBUG("Sent ACK packet with seq number %d\n", ntohl(header->th_seq));
@@ -168,7 +168,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
                     ctx->send_unack = ctx->initial_sequence_num;
                     ctx->send_next = 0;
-                    ctx->recv_next = ntohl(header->th_seq) + 1;
+                    ctx->recv_next = ntohl(header->th_seq) + 2;
                     ctx->send_wind = ntohs(header->th_win);
                     
                     header = make_stcp_packet(TH_SYN|TH_ACK, ctx->send_unack, ctx->recv_next, 0);
@@ -580,7 +580,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         /* update context */
         
         /* if packet acknowledges previously unacknowledged data, update send_unack */
-        if ((header->th_flags & TH_ACK) && ctx->send_unack < ntohl(header->th_ack))
+        if ((header->th_flags & TH_ACK) && ctx->send_unack <= ntohl(header->th_ack))
             ctx->send_unack = ntohl(header->th_ack);
         
         /* update recv_next if this is the packet includes new data. If it's all old, we ack but ignore. If it starts past recv_next, we just ignore. */
