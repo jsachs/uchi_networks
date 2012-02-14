@@ -109,7 +109,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         else
         {
             ctx->send_unack += 1;
-            ctx->send_next = 0;
+            ctx->send_next = ctx->send_unack + 1;
             ctx->connection_state = CSTATE_SYN_SENT;
             
             while(ctx->connection_state == CSTATE_SYN_SENT)
@@ -566,7 +566,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         
         /* get packet header */
         memcpy(header, buff, sizeof(STCPHeader));
-        DEBUG("Received packet with ack number %d (if TH_ACK set) and seq number %d", ntohl(header->th_ack), ntohl(header->th_seq));
+        DEBUG("Received packet with ack number %d (if TH_ACK set) and seq number %d\n", ntohl(header->th_ack), ntohl(header->th_seq));
         
         /* get pointer to payload, taking into account that some of this may be data we have already received */
         payload = buff + sizeof(STCPHeader) + header->th_off;
