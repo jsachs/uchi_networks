@@ -136,6 +136,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                                 errno = ECONNABORTED;
                                 break;
                             }
+                            ctx->send_wind = ntohs(header->th_win);
                             ctx->connection_state = CSTATE_ESTABLISHED;
                             free(header);
                         } 
@@ -197,6 +198,9 @@ void transport_init(mysocket_t sd, bool_t is_active)
             }
         }
     }
+    if(ctx->connection_state == CSTATE_ESTABLISHED)
+		DEBUG("State: seq %d ack %d send window %d\n", ctx->send_unack, ctx->recv_next, ctx->send_wind);
+    
     
     /* potentially handle error conditions */
     stcp_unblock_application(sd);
