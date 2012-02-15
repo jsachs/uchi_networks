@@ -29,7 +29,6 @@
 #define OFFSET 5
 #define HEADERSIZE 20
 #define WINLEN 3072
-#define CONWINLEN 3072
 #define MAX_INIT_SEQ 256
 #define WORDSIZE 4
 
@@ -200,10 +199,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     ctx->send_unack++;
                     DEBUG("Received ACK with ack number %d\n", ntohl(header->th_ack));
                     ctx->connection_state = CSTATE_ESTABLISHED;
-                    
-                    /* congestion window update */
-                    if(header->th_win > ctx->send_win) ctx->send_win = header->th_win;
-                    if(ctx->send_win > CONWINLEN) ctx->send_win = CONWINLEN;
                 }
             }
         }
@@ -249,9 +244,7 @@ static void generate_initial_seq_num(context_t *ctx)
 static void control_loop(mysocket_t sd, context_t *ctx)
 {
     assert(ctx);
-    uint8_t flags;
     int tcplen;
-    char packet[sizeof(STCPHeader) + MAXOPS + MAXLEN]; /* Header size, plus options, plus payload. Shouldn't need this w/ recv_packet */
     char payload[MAXLEN];
     STCPHeader *in_header;
     void *packtosend;
@@ -313,11 +306,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             
             /* send ACK as long as it's not past our window, and actually contained data */
             if(ctx->recv_next >= ntohl(in_header->th_seq) && data_size > 0){
-                /* congestion window update
-                 * if(header->th_win > ctx->send_win) ctx->send_win = header->th_win;
-                 * if(ctx->send_win > CONWINLEN) ctx->send_win = CONWINLEN;
-                 */
-                
                 packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, packtosend, sizeof(STCPHeader), NULL);
                 free(packtosend);
@@ -468,7 +456,6 @@ static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, in
 int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, STCPHeader *header){
     size_t packlen, paylen, send_win;
     void *payload;
-    uint8_t flags;
     void *buff = calloc(1, sizeof(STCPHeader) + MAXOPS + MAXLEN);
     
     /* zero out recvbuff and header so we're extra-sure there's no harm in re-using them */
