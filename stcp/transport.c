@@ -29,6 +29,7 @@
 #define OFFSET 5
 #define HEADERSIZE 20
 #define WINLEN 3072
+#define CONWINLEN 3072
 #define MAX_INIT_SEQ 256
 #define WORDSIZE 4
 
@@ -199,6 +200,10 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     ctx->send_unack++;
                     DEBUG("Received ACK with ack number %d\n", ntohl(header->th_ack));
                     ctx->connection_state = CSTATE_ESTABLISHED;
+                    
+                    /* congestion window update */
+                    if(header->th_win > ctx->send_win) ctx->send_win = header->th_win;
+                    if(ctx->send_win > CONWINLEN) ctx->send_win = CONWINLEN;
                 }
             }
         }
@@ -308,6 +313,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             
             /* send ACK as long as it's not past our window, and actually contained data */
             if(ctx->recv_next >= ntohl(in_header->th_seq) && data_size > 0){
+                /* congestion window update
+                 * if(header->th_win > ctx->send_win) ctx->send_win = header->th_win;
+                 * if(ctx->send_win > CONWINLEN) ctx->send_win = CONWINLEN;
+                 */
+                
                 packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, packtosend, sizeof(STCPHeader), NULL);
                 free(packtosend);
