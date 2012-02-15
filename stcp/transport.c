@@ -109,7 +109,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
         else
         {
-            /*ctx->send_unack = 1;*/
             ctx->send_next = ctx->send_unack + 1;
             ctx->connection_state = CSTATE_SYN_SENT;
             
@@ -119,20 +118,16 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 
                 if(event & NETWORK_DATA)
                 {
-                    tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
+                    tcplen = recv_packet(sd, ctx, NULL, 0,  header);
                     flags = (TH_SYN|TH_ACK);
-                    header = (STCPHeader *) buffer;
-                    if(( tcplen < sizeof(STCPHeader)) || !((header->th_flags & TH_SYN)&&(header->th_flags & TH_ACK))) {
+                    if( tcplen < 0 || !((header->th_flags & TH_SYN)&&(header->th_flags & TH_ACK))) {
                         DEBUG("Did not receive SYN/ACK\n");
                         continue;
                     }
                     else
                     {
-                        DEBUG("packet recieved with seq %d and ack %d\n", ntohl(header->th_seq), ntohl(header->th_ack));
+                        DEBUG("packet received with seq %d and ack %d\n", ntohl(header->th_seq), ntohl(header->th_ack));
                         if(ntohl(header->th_ack) == ctx->send_next){
-                            
-                            ctx->send_unack++;
-                            ctx->recv_next = ntohl(header->th_seq) + 1;
                             header = make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
                             tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
                             DEBUG("Sent ACK packet with seq number %d\n", ntohl(header->th_seq));
@@ -141,7 +136,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
                                 errno = ECONNABORTED;
                                 break;
                             }
-                            ctx->send_wind = ntohs(header->th_win);
                             ctx->connection_state = CSTATE_ESTABLISHED;
                             free(header);
                         } 
@@ -155,11 +149,13 @@ void transport_init(mysocket_t sd, bool_t is_active)
         /* wait for a SYN packet */
         while(ctx->connection_state == CSTATE_CLOSED)
         {
+        	   ctx->send_unack = ctx->initial_sequence_num;
+            ctx->send_next = ctx->send_unack + 1;
             unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
             if(event & NETWORK_DATA){
-                tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
-                STCPHeader *header = (STCPHeader *) buffer;
-                if(tcplen < sizeof(STCPHeader) || header->th_flags != TH_SYN) {
+            	 STCPHeader *header = (STCPHeader *) malloc(sizeof(STCPHeader));
+                tcplen = recv_packet(sd, ctx, NULL, 0, header);
+                if(tcplen < 0 || header->th_flags != TH_SYN) {
                     DEBUG("Did not receive SYN packet\n");
                     continue;
                 }
@@ -167,12 +163,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 {
                     DEBUG("Received SYN with seq number %d\n", ntohl(header->th_seq));
                     ctx->connection_state = CSTATE_SYN_RECEIVED;
-
-                    ctx->send_unack = ctx->initial_sequence_num;
-                    ctx->send_next = ctx->send_unack + 1;
-                    ctx->recv_next = ntohl(header->th_seq) + 1;
-                    ctx->send_wind = ntohs(header->th_win);
-                    
                     header = make_stcp_packet(TH_SYN|TH_ACK, ctx->send_unack, ctx->recv_next, 0);
                     tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
 
@@ -189,14 +179,13 @@ void transport_init(mysocket_t sd, bool_t is_active)
         {
             unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
             if(event & NETWORK_DATA){
-                tcplen = stcp_network_recv(sd, buffer, sizeof(buffer));
-                STCPHeader *header = (STCPHeader *) buffer;
-                if(tcplen < sizeof(STCPHeader) || !(header->th_flags & TH_ACK)) {
+            	 STCPHeader *header = (STCPHeader *) buffer;
+                tcplen = recv_packet(sd, ctx, NULL, 0, header);
+                if(tcplen < 0 || !(header->th_flags & TH_ACK)) {
                     DEBUG("Did not receieve ACK packet\n");
                     continue;
                 }
                 if(ntohl(header->th_ack) == ctx->send_next) {
-                    ctx->send_unack++;
                     DEBUG("Received ACK with ack number %d\n", ntohl(header->th_ack));
                     ctx->connection_state = CSTATE_ESTABLISHED;
                 }
@@ -474,7 +463,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         payload = buff + (WORDSIZE * header->th_off);
         if(packlen == sizeof(STCPHeader))
             paylen = 0;
-        else if(buffsize <= packlen - (WORDSIZE * header->th_off)){
+        else if(buffsize < packlen - (WORDSIZE * header->th_off)){
             DEBUG("buffer too small, packet truncated\n");
             paylen = buffsize;
         }
@@ -486,6 +475,10 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         /* if packet acknowledges previously unacknowledged data, update send_unack */
         if ((header->th_flags & TH_ACK) && ctx->send_unack <= ntohl(header->th_ack))
             ctx->send_unack = ntohl(header->th_ack);
+            
+        /* if packet is a SYN, set ctx->recv_next, even though it doesn't include new data */
+        if (header->th_flags & TH_SYN)
+        		ctx->recv_next = ntohl(header->th_seq) + 1;
         
         /* update recv_next if this is the packet includes new data. If it's all old, we ack but ignore. If it starts past recv_next, we just ignore. */
         if ( (ntohl(header->th_seq) <= ctx->recv_next) && (ctx->recv_next <= ntohl(header->th_seq) + paylen)){
@@ -506,8 +499,10 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         else
             ctx->send_wind = WINLEN;
     }
-    else
+    else{
         DEBUG("Error: invalid packet length");
+        paylen = -1;
+    }
     
     free(buff);
     return paylen;
