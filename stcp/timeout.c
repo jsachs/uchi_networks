@@ -70,19 +70,21 @@ static void update_rto(context_t *ctx, packet_t *packet)
     
     /* start by getting the RTT of the acked packet */
     struct timespec tp;
-    clock_gettime(packet->clk_id, *tp);
-    time_t rtt = tp->tv_sec + 1;
+    clock_gettime(CLOCK_REALTIME, &tp);
+    double diff = difftime(tp.tv_sec, packet->start_time.tv_sec);
+    time_t rtt = (time_t) diff;
     
     /* update the values of SRTT and RTTVAR */
     if(!init)
     {
         ctx->srtt   = rtt;
         ctx->rttvar = rtt/2;
+        init = 1;
     }
     else
     {
         ctx->rttvar = (1 - BETA)*ctx->rttvar + BETA*abs(ctx->srtt - rtt);
-        ctx->srtt   = (1 - ALPHA)*ctx->srtt + ALPHA*rtt;
+        ctx->srtt   = (1 - ALPHA)*ctx->srtt  + ALPHA*rtt;
     }
     /* then the value of RTO is updated */
     ctx->rto = ctx->srtt + max(G, K*(ctx->rttvar)); // need to figure out clock granularity

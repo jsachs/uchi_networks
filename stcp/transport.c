@@ -71,12 +71,12 @@ typedef struct
 
 typedef struct
 {
-    struct timespec  start_time;
-    int       retry_count;
-    tcp_seq   seq_num;
+    struct timespec start_time;
+    int             retry_count;
+    tcp_seq         seq_num;
     
-    void      *packet;
-    int       packet_size;
+    void *packet;
+    int   packet_size;
     
 } packet_t;
 
