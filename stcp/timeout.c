@@ -13,6 +13,7 @@
 #include "transport.h"
 
 #define DEBUG(x, args...) printf(x, ## args)
+#define max(a, b)  ( (a > b) ? (a) : (b) )
 
 /*
  * we want to maintain a smoothed RTT (SRTT)
@@ -53,9 +54,10 @@
  * 6. start the timer to expire after RTO seconds
  */
 
-#define ALPHA .125
-#define BETA  .25
+#define ALPHA 0.125
+#define BETA  0.25
 #define K     4
+#define G     0.1
 
 static void update_rto(context_t *ctx, packet_t *packet)
 {
@@ -64,14 +66,28 @@ static void update_rto(context_t *ctx, packet_t *packet)
     /* check to see if the packet has been retransmitted
      * if so, return and do nothing to the RTO
      */
+    if(packet->retry_count) return;
     
     /* start by getting the RTT of the acked packet */
+    struct timespec tp;
+    clock_gettime(packet->clk_id, *tp);
+    time_t rtt = tp->tv_sec + 1;
     
     /* update the values of SRTT and RTTVAR */
-    
+    if(!init)
+    {
+        ctx->srtt   = rtt;
+        ctx->rttvar = rtt/2;
+    }
+    else
+    {
+        ctx->rttvar = (1 - BETA)*ctx->rttvar + BETA*abs(ctx->srtt - rtt);
+        ctx->srtt   = (1 - ALPHA)*ctx->srtt + ALPHA*rtt;
+    }
     /* then the value of RTO is updated */
+    ctx->rto = ctx->srtt + max(G, K*(ctx->rttvar)); // need to figure out clock granularity
     
-    
+    return;
 }
  
  
