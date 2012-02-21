@@ -13,7 +13,7 @@
 include ENVCFG.MK
 
 CC=gcc
-CFLAGS=-g -D$(ENV) -D_REENTRANT $(ENVCFLAGS) -Wall -W -Wno-unused-function \
+CFLAGS=-g -D$(ENV) -D_REENTRANT $(ENVCFLAGS) -Wall -lrt -W -Wno-unused-function \
        -Wno-unused-parameter #-DDEBUG
 LIBS=$(ENVLIBS)
 MAKEFILE=Makefile
