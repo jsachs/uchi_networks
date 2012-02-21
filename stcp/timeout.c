@@ -53,20 +53,26 @@
  * 6. start the timer to expire after RTO seconds
  */
 
-
 #define ALPHA .125
 #define BETA  .25
 #define K     4
 
-typedef struct timespec timespec;
-
-static update_rtt;
-
-
-
-
-
-static void update_rtt(
+static void update_rto(context_t *ctx, packet_t *packet)
+{
+    static int init = 0;
+    
+    /* check to see if the packet has been retransmitted
+     * if so, return and do nothing to the RTO
+     */
+    
+    /* start by getting the RTT of the acked packet */
+    
+    /* update the values of SRTT and RTTVAR */
+    
+    /* then the value of RTO is updated */
+    
+    
+}
  
  
  

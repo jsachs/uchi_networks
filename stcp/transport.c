@@ -58,7 +58,26 @@ typedef struct
     tcp_seq send_wind;
     tcp_seq recv_next;
     tcp_seq recv_wind;
+    
+    /* variables for timeout operations */
+    time_t rto;
+    time_t srtt;
+    long   rttvar;
+    
+    /* a list_t of packet_t */
+    
 } context_t;
+
+typedef struct
+{
+    clockid_t clk_id;
+    int       retry_count;
+    tcp_seq   seq_num;
+    
+    void      *packet;
+    int       packet_size;
+    
+} packet_t;
 
 
 static void generate_initial_seq_num(context_t *ctx);
