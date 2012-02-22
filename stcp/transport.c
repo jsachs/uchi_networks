@@ -17,6 +17,7 @@
 #include <assert.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <time.h>
 #include "mysock.h"
 #include "stcp_api.h"
 #include "transport.h"
@@ -66,6 +67,7 @@ static void control_loop(mysocket_t sd, context_t *ctx);
 void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize);
 static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len);
 int recv_packet(mysocket_t sd, context_t *context, void *recvbuff, size_t buffsize, STCPHeader *header);
+struct timespec update_rto(void);
 
 
 
@@ -548,6 +550,16 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
     free(buff);
     return paylen;
 }
+
+struct timespec update_rto(void)
+{
+    struct timespec ts = {3, 0};
+    return ts;
+}
+
+
+
+
 
 
 
