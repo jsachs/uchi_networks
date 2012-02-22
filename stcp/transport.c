@@ -180,6 +180,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                             }
                             ctx->connection_state = CSTATE_ESTABLISHED;
                             free(header);
+                            header = NULL;
                         } 
                     }
                 }
@@ -193,7 +194,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         {
             ctx->send_unack = ctx->initial_sequence_num;
             ctx->send_next = ctx->send_unack;
-            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
+            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA|TIMEOUT, NULL); /* yes we need to add timeout later */
             if(event & NETWORK_DATA){
                 STCPHeader *header = (STCPHeader *) malloc(sizeof(STCPHeader));
                 tcplen = recv_packet(sd, ctx, NULL, 0, header);
@@ -221,12 +222,12 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
         while(ctx->connection_state == CSTATE_SYN_RECEIVED)
         {
-            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
+            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA|TIMEOUT, NULL);
             if(event & NETWORK_DATA){
             	 STCPHeader *header = (STCPHeader *) buffer;
                 tcplen = recv_packet(sd, ctx, NULL, 0, header);
                 if(tcplen < 0 || !(header->th_flags & TH_ACK)) {
-                    DEBUG("Did not receieve ACK packet\n");
+                    DEBUG("Did not receive ACK packet\n");
                     continue;
                 }
                 /* if it's the right ACK packet, go to the ESTABLISHED state */
@@ -286,20 +287,34 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     void *packtosend;
     char *buffpt;
     char tempbuff[WINLEN];
+    stcp_event_type_t eventflag;
     
     while (!ctx->done)
     {
         unsigned int event;
         
-        /* set timeout if there is any unack'd data */
-	/* Exactly what data structures do we want to store these as? Worry about it later!*/
-        struct timespec *timeout = NULL;
-        if (ctx->send_unack < ctx->send_next)
-           timeout->tv_sec = ctx->rto;
+        eventflag = ANY_EVENT;
+        
+        /* set timeout if there is any unack'd data; if not, just make it NULL */
+        struct timespec timestart;
+        struct timespec *timeout;
+
+        if (ctx->send_unack < ctx->send_next){
+        	  timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
+			  timeout = &timestart;
+           timeout->tv_sec += ctx->rto;
+           if (timeout->tv_sec <= time(NULL))
+        			/*earliest unacked packet has timed out, unless it's currently sitting in buffer */
+        			eventflag = NETWORK_DATA|TIMEOUT;
+        }
+        else
+        	  timeout = NULL;
+
+        
         
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
-        event = stcp_wait_for_event(sd, ANY_EVENT, timeout);
+        event = stcp_wait_for_event(sd, eventflag, timeout);
         
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)
@@ -324,7 +339,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     /*create and send packet*/
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader), buffer, tcplen);
-		    DEBUG("Preparing to send packet with payload %s\n", (char *)packtosend+20);
+		   			  DEBUG("Preparing to send packet with payload %s\n", (char *)packtosend+20);
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
                     DEBUG("Packet of payload size %d, ack number %d, seq number %d sent to network\n", tcplen, ctx->recv_next, ctx->send_next);
                     packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen);
@@ -333,7 +348,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     ctx->send_wind -= tcplen;
                 }
                 free(buffer);
+                buffer = NULL;
                 free(packtosend);
+                packtosend = NULL;
             }
             else DEBUG("Could not get application data\n");
         }
@@ -354,6 +371,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, packtosend, sizeof(STCPHeader), NULL);
                 free(packtosend);
+                packtosend = NULL;
             }
 
 
@@ -383,6 +401,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
                     free(in_header);
+                    in_header = NULL;
                     break;
                 }
                 /* go from LAST-ACK --> CLOSED */
@@ -390,6 +409,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
                     free(in_header);
+                    in_header = NULL;
                     break;
                 }
                 /* go from CLOSING --> CLOSED */
@@ -397,6 +417,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
                     free(in_header);
+                    in_header = NULL;
                     break;
                 }
                     
@@ -422,6 +443,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
                     free(in_header);
+                    in_header = NULL;
                     break;
                 }
                 /* go from FIN-WAIT1 --> CLOSING */
@@ -433,6 +455,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     ctx->connection_state = CSTATE_CLOSING;
                 }
                 free(in_header);
+                in_header = NULL;
             }
         }
         
@@ -448,6 +471,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 ctx->send_unack += 1;
                 packet_t_create(ctx, header, sizeof(STCPHeader));
                 free(header);
+                header = NULL;
                 /* go into FIN-WAIT1 */
                 ctx->connection_state = CSTATE_FIN_WAIT1;
                 DEBUG("State: FIN-WAIT1\n");
@@ -457,9 +481,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->send_next, ctx->recv_next);
                 STCPHeader *header = make_stcp_packet(TH_FIN, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-		packet_t_create(ctx, header, sizeof(STCPHeader));
+					 packet_t_create(ctx, header, sizeof(STCPHeader));
                 ctx->send_next += 1;
                 free(header);
+                header = NULL;
                 /* go from CLOSE-WAIT --> LAST-ACK */
                 ctx->connection_state = CSTATE_LAST_ACK;
                 DEBUG("State: LAST-ACK\n");
@@ -505,11 +530,11 @@ void our_dprintf(const char *format,...)
  */
 
 static void packet_t_create(context_t *ctx, void *packet, int packetsize){
-    packet_t *newpack = (packet_t *)malloc(sizeof(newpack));
+    packet_t *newpack = (packet_t *)malloc(sizeof(packet_t));
     struct timespec start;
-    newpack->start_time = start;
     if (clock_gettime(CLOCK_REALTIME, &start) < 0)
         DEBUG("Failed to get time in packet_t_create\n");
+    newpack->start_time = start;
     newpack->retry_count = 0;
     newpack->seq_num = ctx->send_next;
     newpack->packet = malloc(packetsize);
@@ -527,13 +552,13 @@ static void packet_t_remove(context_t *ctx){
         packet_t *oldpack = list_get_at(ctx->unackd_packets, 0);
         
         /* update RTO given this packet */
-        update_rto(ctx, oldpack); 
+        /* update_rto(ctx, oldpack); */ 
         
         /* if all the data in the packet was acknowledged, discard and delete from list */
-        if (ctx->send_unack > oldpack->seq_num + oldpack->packet_size){
+        if (ctx->send_unack > oldpack->seq_num + (oldpack->packet_size - sizeof(STCPHeader))){
+        	   free(oldpack->packet);
+        	   oldpack->packet = NULL;
             list_delete_at(ctx->unackd_packets, 0);
-            free(oldpack->packet);
-            free(oldpack);
         }
         else
             /* this packet and all beyond it are unacknowledged */
@@ -625,7 +650,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
             ctx->send_unack = ntohl(header->th_ack);
             
         /* update list of unack'd packets */
-        packet_t_remove(ctx); 
+          packet_t_remove(ctx);
         
         /* if packet is a SYN, set ctx->recv_next, even though it doesn't include new data */
         if (header->th_flags & TH_SYN)
