@@ -13,16 +13,16 @@
 include ENVCFG.MK
 
 CC=gcc
-CFLAGS=-g -D$(ENV) -D_REENTRANT $(ENVCFLAGS) -Wall -lrt -W -Wno-unused-function \
+CFLAGS=-g -D$(ENV) -D_REENTRANT $(ENVCFLAGS) -Wall -W -Wno-unused-function \
        -Wno-unused-parameter #-DDEBUG
-LIBS=$(ENVLIBS)
+LIBS=$(ENVLIBS) -lrt
 MAKEFILE=Makefile
 LN=ln
 RM=rm
 AR=ar crus
 
 SRCS_MYSOCK = transport.c mysock_api.c stcp_api.c mysock.c network.c \
-              connection_demux.c tcp_sum.c network_io.c
+              connection_demux.c tcp_sum.c network_io.c simclist.c
 SRCS_IO = network_io_tcp.c network_io_socket.c
 SRCS = $(SRCS_MYSOCK) $(SRCS_IO)
 
