@@ -21,9 +21,10 @@
 #include "mysock.h"
 #include "stcp_api.h"
 #include "transport.h"
+#include "simclist.h"
 
 #define DEBUG(x, args...) printf(x, ## args)
-
+#define max(a, b)  ( (a > b) ? (a) : (b) )
 
 #define MAXLEN 536        /* maximum payload size */
 #define MAXOPS 40         /* maximum number of bytes for options */
@@ -32,6 +33,12 @@
 #define WINLEN 3072       /* fixed window size */
 #define MAX_INIT_SEQ 256  /* maximum initial sequence number (+1) */
 #define WORDSIZE 4        /* defines 4-byte words for use with offset */
+
+/* macros for RTO */
+#define ALPHA 0.125
+#define BETA  0.25
+#define K     4
+#define G     0.1
 
 
 enum { CSTATE_ESTABLISHED,
@@ -59,16 +66,37 @@ typedef struct
     tcp_seq send_wind;
     tcp_seq recv_next;
     tcp_seq recv_wind;
+    
+    /* variables for timeout operations */
+    time_t rto;
+    time_t srtt;
+    long   rttvar;
+    
+    list_t *unackd_packets;
+    
 } context_t;
+
+typedef struct
+{
+    struct timespec start_time;
+    int             retry_count;
+    tcp_seq         seq_num;
+    
+    void *packet;
+    int   packet_size;
+    
+} packet_t;
 
 
 static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
-void send_packet(int sd, uint8_t flags, context_t *ctx, uint16_t winsize, void *payload, size_t psize);
+static void packet_t_create(context_t *ctx, void *packet, int packetsize);
+static void packet_t_remove(context_t *ctx);
 static STCPHeader * make_stcp_packet(uint8_t flags, tcp_seq seq, tcp_seq ack, int len);
 int recv_packet(mysocket_t sd, context_t *context, void *recvbuff, size_t buffsize, STCPHeader *header);
 struct timespec update_rto(void);
 
+static void update_rto(context_t *ctx, packet_t *packet);
 
 
 /* initialise the transport layer, and start the main loop, handling
@@ -89,6 +117,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
     generate_initial_seq_num(ctx);
     
     ctx->connection_state = CSTATE_CLOSED;
+    list_init(ctx->unackd_packets);
     
     /* XXX: you should send a SYN packet here if is_active, or wait for one
      * to arrive if !is_active.  after the handshake completes, unblock the
@@ -104,7 +133,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
         STCPHeader *header = make_stcp_packet(TH_SYN, ctx->send_unack, 0, 0);
         /* first step in the handshake: sending a SYN packet */
         tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-        
+        ctx->send_next = ctx_send_unack;
+        packet_t_create(ctx, header, sizeof(STCPHeader));
         DEBUG("Sent SYN packet with seq number %d\n", ntohl(header->th_seq));
         
         if(tcplen < 0) {
@@ -113,7 +143,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
         else
         {
-            ctx->send_next = ctx->send_unack + 1;
+            ctx->send_next++;
             ctx->connection_state = CSTATE_SYN_SENT;
             /* the client now waits for a SYN/ACK */
             while(ctx->connection_state == CSTATE_SYN_SENT)
@@ -155,7 +185,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         while(ctx->connection_state == CSTATE_CLOSED)
         {
             ctx->send_unack = ctx->initial_sequence_num;
-            ctx->send_next = ctx->send_unack + 1;
+            ctx->send_next = ctx->send_unack;
             unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
             if(event & NETWORK_DATA){
                 STCPHeader *header = (STCPHeader *) malloc(sizeof(STCPHeader));
@@ -177,6 +207,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
                         errno = ECONNABORTED;
                         break;
                     }
+                    packet_t_create(ctx, header, sizeof(STCPHeader));
+                    ctx->send_next++;
                 }
             }
         }
@@ -250,9 +282,14 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     {
         unsigned int event;
         
+        /* set timeout if there is any unack'd data */
+        struct timespec *timeout = NULL;
+        if (ctx->send_unack < ctx->send_next)
+            timeout = ctx->start_time;
+        
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
-        event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
+        event = stcp_wait_for_event(sd, ANY_EVENT, timeout);
         
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)
@@ -279,6 +316,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     memcpy(packtosend + sizeof(STCPHeader), buffer, tcplen);
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
                     DEBUG("Packet of payload size %d, ack number %d, seq number %d sent to network\n", tcplen, ctx->recv_next, ctx->send_next);
+                    packet_t_create(ctx, header, sizeof(STCPHeader));
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
                     ctx->send_wind -= tcplen;
@@ -387,9 +425,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->send_next, ctx->recv_next);
                 STCPHeader *header = make_stcp_packet(TH_FIN, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-				free(header);
-                
                 ctx->send_unack += 1;
+                packet_t_create(ctx, header, sizeof(STCPHeader));
+                free(header);
                 /* go into FIN-WAIT1 */
                 ctx->connection_state = CSTATE_FIN_WAIT1;
                 DEBUG("State: FIN-WAIT1\n");
@@ -399,9 +437,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 DEBUG("Sending FIN packet with seq %d, ack %d\n", ctx->send_next, ctx->recv_next);
                 STCPHeader *header = make_stcp_packet(TH_FIN, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
-				free(header);
-                
+				packet_t_create(ctx, header, sizeof(STCPHeader));
                 ctx->send_next += 1;
+                free(header);
                 /* go from CLOSE-WAIT --> LAST-ACK */
                 ctx->connection_state = CSTATE_LAST_ACK;
                 DEBUG("State: LAST-ACK\n");
@@ -441,6 +479,48 @@ void our_dprintf(const char *format,...)
 
 
 /**********************************************************************/
+
+/* adds a record of new, unacknowledged packet to unackd_packets
+ * should be called BEFORE updating send_next
+ */
+static void packet_t_create(context_t *ctx, void *packet, int packetsize){
+    packet_t *newpack = (packet_t *)malloc(sizeof(newpack));
+    struct timespec start;
+    newpack->start_time = start;
+    if (clock_gettime(CLOCK_REALTIME, &start) < 0)
+        DEBUG("Failed to get time in packet_t_create\n");
+    newpack->retry_count = 0;
+    newpack->clk_id = ctx->send_next;
+    newpack->packet = malloc(packetsize);
+    memcpy(newpack->packet, packet);
+    newpack->packet_size = packetsize;
+    list_append(ctx->unackd_packets, newpack);
+    return;
+}
+
+/* removes every ack'd packet from unackd_packets
+ * should be called AFTER updating send_unack
+ */
+static void packet_t_remove(context_t *ctx){
+    while (list_size(ctx->unackd_packets) > 0){
+        packet_t *oldpack = list_get_at(ctx->unackd_packets, 0);
+        
+        /* update RTO given this packet */
+        update_rto(ctx, oldpack);
+        
+        /* if all the data in the packet was acknowledged, discard and delete from list */
+        if (ctx->send_unack > oldpack->seq_num + oldpack->packet_size){
+            list_delete_at(ctx->unackd_packets, 0);
+            free(oldpack->packet);
+            free(oldpack);
+        }
+        else
+            /* this packet and all beyond it are unacknowledged */
+            break;
+    }
+    return;
+}
+
 /*
 
 0                   1                   2                   3   
@@ -519,6 +599,9 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         if ((header->th_flags & TH_ACK) && ctx->send_unack <= ntohl(header->th_ack))
             ctx->send_unack = ntohl(header->th_ack);
             
+        /* update list of unack'd packets */
+        static void packet_t_remove(context_t *ctx);
+        
         /* if packet is a SYN, set ctx->recv_next, even though it doesn't include new data */
         if (header->th_flags & TH_SYN)
         		ctx->recv_next = ntohl(header->th_seq) + 1;
@@ -558,6 +641,81 @@ struct timespec update_rto(void)
 }
 
 
+
+
+
+
+/*
+ * we want to maintain a smoothed RTT (SRTT)
+ * and an RTT variation (RTTVAR)
+ *
+ * initial RTT is set to 3 seconds
+ *
+ * when the first RTT measurement R is made:
+ * SRTT = R
+ * RTTVAR = R/2
+ * RTO = SRTT + max(G, K*RTTVAR) (where G is clock granularity)
+ * where K = 4
+ *
+ * when further RTT measurements R' are made:
+ * RTTVAR = (1 - beta) * RTTVAR + beta * |SRTT - R'|
+ * SRTT = (1 - alpha) * SRTT + alpha * R'
+ * where alpha = 1/8 and beta = 1/4
+ *
+ * then the host updates:
+ * RTO = SRTT + max(G, K*RTTVAR)
+ *
+ * RTO should always be rounded up to 1 second
+ *
+ * use Karn's algorithm to take RTT samples,
+ * i.e. cannot use retransmitted segments
+ *
+ * a clock granularity of 100 msec or less is good
+ *
+ * the basic algorithm:
+ * 1. when a packet containing data is sent, start the timer so that it
+ *    expires after RTO seconds for current RTO
+ * 2. when all outstanding data is acknowledged, turn off the timer
+ * 3. when an ACK is received that acknowledges new data,
+ *    restart the timer so that it expires after RTO seconds
+ * when the timer expires, perform the following:
+ * 4. retransmit the earliest segment unacked by receiver
+ * 5. host sets RTO = RTO * 2 (back off)
+ * 6. start the timer to expire after RTO seconds
+ */
+
+static void update_rto(context_t *ctx, packet_t *packet)
+{
+    static int init = 0;
+    
+    /* check to see if the packet has been retransmitted
+     * if so, return and do nothing to the RTO
+     */
+    if(packet->retry_count) return;
+    
+    /* start by getting the RTT of the acked packet */
+    struct timespec tp;
+    clock_gettime(CLOCK_REALTIME, &tp);
+    double diff = difftime(tp.tv_sec, packet->start_time.tv_sec);
+    time_t rtt = (time_t) diff;
+    
+    /* update the values of SRTT and RTTVAR */
+    if(!init)
+    {
+        ctx->srtt   = rtt;
+        ctx->rttvar = rtt/2;
+        init = 1;
+    }
+    else
+    {
+        ctx->rttvar = (1 - BETA)*ctx->rttvar + BETA*abs(ctx->srtt - rtt);
+        ctx->srtt   = (1 - ALPHA)*ctx->srtt  + ALPHA*rtt;
+    }
+    /* then the value of RTO is updated */
+    ctx->rto = ctx->srtt + max(G, K*(ctx->rttvar)); // need to figure out clock granularity
+    
+    return;
+}
 
 
 
