@@ -299,7 +299,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         struct timespec timestart;
         struct timespec *timeout;
 
-        if (ctx->send_unack < ctx->send_next){
+        if (ctx->send_unack < ctx->send_next){ // SHOULD THIS BE RECV_NEXT?
         	  timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
 			  timeout = &timestart;
            timeout->tv_sec += ctx->rto;
@@ -308,7 +308,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         			eventflag = NETWORK_DATA|TIMEOUT;
         }
         else
-        	  timeout = NULL;
+        	  timeout = NULL; // WHY IS IT DEFAULTING TO THIS?
 
         
         
@@ -339,10 +339,12 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     /*create and send packet*/
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader), buffer, tcplen);
-		   			  DEBUG("Preparing to send packet with payload %s\n", (char *)packtosend+20);
+                    
+                    DEBUG("Preparing to send packet with payload %s\n", (char *)packtosend + HEADERSIZE);
+                    
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
                     DEBUG("Packet of payload size %d, ack number %d, seq number %d sent to network\n", tcplen, ctx->recv_next, ctx->send_next);
-                    packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen);
+                    packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen); // now a packet has been pushed onto the unacked queue
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
                     ctx->send_wind -= tcplen;
@@ -383,8 +385,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             
             /* slide the window over */
-	    buffpt = strchr(ctx->recv_buffer, '\0');
-	    data_size = buffpt - ctx->recv_buffer;
+            buffpt = strchr(ctx->recv_buffer, '\0');
+            data_size = buffpt - ctx->recv_buffer;
             memcpy(tempbuff, buffpt, WINLEN - data_size);
             memset(ctx->recv_buffer, '\0', WINLEN);
             memcpy(ctx->recv_buffer, tempbuff, WINLEN - data_size);
@@ -420,7 +422,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     in_header = NULL;
                     break;
                 }
-                    
             }
             
             if (in_header->th_flags & TH_FIN){
