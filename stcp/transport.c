@@ -294,9 +294,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         /* set timeout if there is any unack'd data */
 	/* Exactly what data structures do we want to store these as? Worry about it later!*/
         struct timespec *timeout = NULL;
-        /* if (ctx->send_unack < ctx->send_next)
-         *   timeout = ctx->rto;
-         */ 
+        if (ctx->send_unack < ctx->send_next)
+           timeout->tv_sec = ctx->rto;
+        
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, ANY_EVENT, timeout);
@@ -527,8 +527,7 @@ static void packet_t_remove(context_t *ctx){
         packet_t *oldpack = list_get_at(ctx->unackd_packets, 0);
         
         /* update RTO given this packet */
-        /* update_rto(ctx, oldpack);    */
-	ctx->rto = 3; /* placeholder */
+        update_rto(ctx, oldpack); 
         
         /* if all the data in the packet was acknowledged, discard and delete from list */
         if (ctx->send_unack > oldpack->seq_num + oldpack->packet_size){
