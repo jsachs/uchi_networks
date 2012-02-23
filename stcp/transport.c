@@ -300,15 +300,14 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         struct timespec *timeout;
 
         if (ctx->send_unack < ctx->send_next){ 
-        	  timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
-			  timeout = &timestart;
-           timeout->tv_sec += ctx->rto;
-           if (timeout->tv_sec <= time(NULL))
-        			/*earliest unacked packet has timed out, unless it's currently sitting in buffer */
-        			eventflag = NETWORK_DATA|TIMEOUT;
+            timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
+            timeout = &timestart;
+            timeout->tv_sec += ctx->rto;
+            if (timeout->tv_sec <= time(NULL))
+                /*earliest unacked packet has timed out, unless it's currently sitting in buffer */
+                eventflag = NETWORK_DATA|TIMEOUT;
         }
-        else
-        	  timeout = NULL; 
+        else    timeout = NULL; 
 
         
         
@@ -758,7 +757,7 @@ static void update_rto(context_t *ctx, packet_t *packet)
     /* check to see if the packet has been retransmitted
      * if so, return and do nothing to the RTO
      */
-    if(packet->retry_count) return;
+    if (packet->retry_count) return;
     
     /* start by getting the RTT of the acked packet */
     struct timespec tp;
