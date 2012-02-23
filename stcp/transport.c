@@ -569,7 +569,7 @@ static void packet_t_remove(context_t *ctx){
         update_rto(ctx, oldpack);
         
         /* if all the data in the packet was acknowledged, discard and delete from list */
-        if (ctx->send_unack > oldpack->seq_num + (oldpack->packet_size - sizeof(STCPHeader))){
+        if (ctx->send_unack >= oldpack->seq_num + (oldpack->packet_size - sizeof(STCPHeader))){
         	   free(oldpack->packet);
         	   oldpack->packet = NULL;
             list_delete_at(ctx->unackd_packets, 0);
