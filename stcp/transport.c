@@ -299,7 +299,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         struct timespec timestart;
         struct timespec *timeout;
 
-        if (ctx->send_unack < ctx->send_next){ // SHOULD THIS BE RECV_NEXT?
+        if (ctx->send_unack < ctx->send_next){ 
         	  timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
 			  timeout = &timestart;
            timeout->tv_sec += ctx->rto;
@@ -308,7 +308,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         			eventflag = NETWORK_DATA|TIMEOUT;
         }
         else
-        	  timeout = NULL; // WHY IS IT DEFAULTING TO THIS?
+        	  timeout = NULL; 
 
         
         
@@ -344,7 +344,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
                     DEBUG("Packet of payload size %d, ack number %d, seq number %d sent to network\n", tcplen, ctx->recv_next, ctx->send_next);
-                    packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen); // now a packet has been pushed onto the unacked queue
+                    packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen); /* now a packet has been pushed onto the unacked queue */
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
                     ctx->send_wind -= tcplen;
@@ -491,7 +491,20 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 DEBUG("State: LAST-ACK\n");
             }
         }
-    }
+        else{
+        	/* TIMEOUT--resend all packets in ctx->unackd_packets */
+        	packet_t *resendpack;
+        	list_iterator_start(ctx->unackd_packets);
+        	while (list_iterator_hasnext(ctx->unackd_packets)){
+        		resendpack = (packet_t *)list_iterator_next(ctx->unackd_packets);
+        		/* increment retries */
+        		resendpack->retry_count++;
+        		((STCPHeader *)(resendpack->packet))->th_ack = htonl(ctx->recv_next);
+        		stcp_network_send(sd, resendpack->packet, resendpack->packet_size, NULL);
+        }
+        list_iterator_stop(ctx->unackd_packets);
+    	}
+   }
 }
 
 
