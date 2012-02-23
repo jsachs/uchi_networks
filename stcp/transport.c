@@ -299,16 +299,17 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         struct timespec timestart;
         struct timespec *timeout;
 
-        if (ctx->send_unack < ctx->send_next){ // SHOULD THIS BE RECV_NEXT?
-        	  timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
-			  timeout = &timestart;
-           timeout->tv_sec += ctx->rto;
-           if (timeout->tv_sec <= time(NULL))
-        			/*earliest unacked packet has timed out, unless it's currently sitting in buffer */
-        			eventflag = NETWORK_DATA|TIMEOUT;
+        if (ctx->send_unack < ctx->send_next)
+        { /* SHOULD THIS BE RECV_NEXT? */
+            timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
+	    timeout = &timestart;
+            timeout->tv_sec += ctx->rto;
+            if (timeout->tv_sec <= time(NULL))
+            /*earliest unacked packet has timed out, unless it's currently sitting in buffer */
+            eventflag = NETWORK_DATA|TIMEOUT;
         }
         else
-        	  timeout = NULL; // WHY IS IT DEFAULTING TO THIS?
+        	  timeout = NULL; /* WHY IS IT DEFAULTING TO THIS? */
 
         
         
@@ -344,7 +345,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
                     DEBUG("Packet of payload size %d, ack number %d, seq number %d sent to network\n", tcplen, ctx->recv_next, ctx->send_next);
-                    packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen); // now a packet has been pushed onto the unacked queue
+                    packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen); /* now a packet has been pushed onto the unacked queue */
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
                     ctx->send_wind -= tcplen;
@@ -553,7 +554,7 @@ static void packet_t_remove(context_t *ctx){
         packet_t *oldpack = list_get_at(ctx->unackd_packets, 0);
         
         /* update RTO given this packet */
-        /* update_rto(ctx, oldpack); */ 
+        update_rto(ctx, oldpack); 
         
         /* if all the data in the packet was acknowledged, discard and delete from list */
         if (ctx->send_unack > oldpack->seq_num + (oldpack->packet_size - sizeof(STCPHeader))){
