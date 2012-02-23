@@ -490,7 +490,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 DEBUG("State: LAST-ACK\n");
             }
         }
-        else{
+        if (event == TIMEOUT)
+        {
         	/* TIMEOUT--resend all packets in ctx->unackd_packets */
         	packet_t *resendpack;
         	list_iterator_start(ctx->unackd_packets);
