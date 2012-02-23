@@ -370,7 +370,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             
             
             /* send ACK as long as it's not past our window, and actually contained data */
-            if(ctx->recv_next >= ntohl(in_header->th_seq) && data_size > 0){
+            if( /*ctx->recv_next >= ntohl(in_header->th_seq) && */ data_size > 0){
                 packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, packtosend, sizeof(STCPHeader), NULL);
                 free(packtosend);
@@ -380,7 +380,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 
 
             /* send payload to application, if it's valid */
-            if(data_size){
+            if(data_size > 0){
                 DEBUG("Sent data of size %d to application\n", data_size);
                 stcp_app_send(sd, ctx->recv_buffer, data_size);
             }
@@ -554,7 +554,8 @@ static void packet_t_remove(context_t *ctx){
         packet_t *oldpack = list_get_at(ctx->unackd_packets, 0);
         
         /* update RTO given this packet */
-        update_rto(ctx, oldpack); 
+        update_rto(ctx, oldpack);
+
         
         /* if all the data in the packet was acknowledged, discard and delete from list */
         if (ctx->send_unack > oldpack->seq_num + (oldpack->packet_size - sizeof(STCPHeader))){
@@ -617,6 +618,8 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
     size_t packlen, paylen, send_win;
     void *payload;
     void *buff = calloc(1, sizeof(STCPHeader) + MAXOPS + MAXLEN);
+    size_t recv_window_size;
+    size_t data_to_app;
     
     /* zero out recvbuff and header so we're extra-sure there's no harm in re-using them */
     memset(recvbuff, '\0', buffsize);
@@ -629,22 +632,44 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         /* get packet header */
         memcpy(header, buff, sizeof(STCPHeader));
         DEBUG("Received packet with ack number %d (if TH_ACK set) and seq number %d\n", ntohl(header->th_ack), ntohl(header->th_seq));
-        
-        /* get pointer to payload, taking into account that some of this may be data we have already received */
-        payload = buff + (WORDSIZE * header->th_off);
-        if(packlen == sizeof(STCPHeader))
-            paylen = 0;
-        else if(buffsize < packlen - (WORDSIZE * header->th_off)){
-            DEBUG("buffer too small, packet truncated\n");
-            paylen = buffsize;
+  
+        paylen = packlen - (WORDSIZE * header->th_off);
+        if (paylen > 0){
+        		/* update context recv buffer */
+        		int buffer_offset = ntohl(header->th_seq) - ctx->recv_next;
+
+        		payload = buff + (WORDSIZE * header->th_off);
+        		if (buffer_offset < 0){
+        			buffer_offset = 0;
+        			if (ntohl(header->th_seq) + paylen < ctx->recv_next){
+        				paylen = 0;
+        			}
+        			else{
+        				payload += ctx->recv_next - ntohl(header->th_seq);
+        				paylen -= ctx->recv_next - ntohl(header->th_seq);
+        			}
+        		}
+        		else if (buffer_offset > WINLEN){
+        	 		free(buff);
+        	 		return -1;
+        		}
+
+        		recv_window_size = WINLEN - buffer_offset;
+        		if (paylen > recv_window_size){
+        			paylen = recv_window_size;
+        			DEBUG("Packet crossed received window, was truncated\n");
+        		}
+
+        		memcpy(ctx->recv_buffer + buffer_offset, payload, paylen);
+        		memset(ctx->recv_indicator + buffer_offset, '1', paylen);
+        		
+        		/* update recv_next */
+        		ctx->recv_next += strchr(ctx->recv_buffer, '\0') - ctx->recv_buffer;
+        		
+        		data_to_app = strchr(ctx->recv_buffer, '\0') - ctx->recv_buffer;
         }
-        else
-            paylen = packlen - (WORDSIZE * header->th_off);
-        
-        /* update context recv buffer */
-        int buffer_offset = ntohl(header->th_seq) - ctx->recv_next;
-        memcpy(ctx->recv_buffer + buffer_offset, payload, paylen);
-        memset(ctx->recv_indicator + buffer_offset, '1', paylen);
+        else 
+        		data_to_app = paylen;
 
 
         /* if packet acknowledges previously unacknowledged data, update send_unack */
@@ -658,18 +683,6 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         if (header->th_flags & TH_SYN)
         		ctx->recv_next = ntohl(header->th_seq) + 1;
         
-        /* update recv_next if this is the packet includes new data. If it's all old, we ack but ignore. If it starts past recv_next, we just ignore. */
-        if ( (ntohl(header->th_seq) <= ctx->recv_next) && (ctx->recv_next <= ntohl(header->th_seq) + paylen)){
-            /* how much of the data in the packet have we already gotten? */
-            int old = ctx->recv_next - ntohl(header->th_seq);
-            payload += old;
-            paylen -= old;
-            ctx->recv_next += paylen;
-            /* now that payload points only to new data, copy it into recvbuff */
-            memcpy(recvbuff, payload, paylen);
-        }
-        else
-            paylen = 0;
         /* also update sender window size */
         send_win = ntohs(header->th_win) - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
         if (send_win <= WINLEN)
@@ -679,11 +692,12 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
     }
     else{
         DEBUG("Error: invalid packet length");
-        paylen = -1;
+        free (buff);
+        return -1;
     }
     
     free(buff);
-    return paylen;
+    return data_to_app;
 }
 
 
