@@ -516,11 +516,18 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         }
         if (event == TIMEOUT)
         {
-        	/* TIMEOUT--resend all packets in ctx->unackd_packets */
+		int giveup = 0;        	
+		/* TIMEOUT--resend all packets in ctx->unackd_packets */
         	packet_t *resendpack;
         	list_iterator_start(ctx->unackd_packets);
         	while (list_iterator_hasnext(ctx->unackd_packets)){
         		resendpack = (packet_t *)list_iterator_next(ctx->unackd_packets);
+			if (resendpack->retry_count > 6){
+				/*close the connection*/
+				DEBUG("Too many retries");
+				errno = ECONNABORTED;
+				giveup = 1;
+			}
         		/* increment retries */
         		resendpack->retry_count++;
 			clock_gettime(CLOCK_REALTIME, &(resendpack->start_time)); 
@@ -529,6 +536,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 			DEBUG("Resent packet with sequence number %d\n", ntohl(((STCPHeader *)(resendpack->packet))->th_seq));
         	}
         	list_iterator_stop(ctx->unackd_packets);
+		if (giveup)
+		   break;
     	}
    }
 }
