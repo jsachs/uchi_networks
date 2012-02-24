@@ -116,6 +116,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
     /* ensures this array begins as entirely null characters */
     memset(ctx->recv_indicator, '\0', WINLEN);
+    ctx->rto = 3;
     
     char buffer[sizeof(STCPHeader) + MAXLEN];
     
@@ -304,11 +305,19 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
             timeout = &timestart;
             timeout->tv_sec += ctx->rto;
+	    if (ctx->send_unack%5 == 0){
+            	DEBUG("Timeout: %d\n", timeout->tv_sec);
+            	DEBUG("RTO: %d\n", ctx->rto);
+	    	DEBUG("Current time: %d\n", time(NULL));
+	    }
             if (timeout->tv_sec <= time(NULL))
                 /*earliest unacked packet has timed out, unless it's currently sitting in buffer */
                 eventflag = NETWORK_DATA|TIMEOUT;
         }
-        else    timeout = NULL; 
+        else{    
+		timeout = NULL;
+		DEBUG("No timeout set\n");
+	} 
 
         
         
@@ -379,7 +388,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             if(data_size > 0){
                 DEBUG("Sent data of size %d to application\n", data_size);
                 stcp_app_send(sd, ctx->recv_buffer, data_size);
-            }
+           
             
             /* slide the window over */
             indicpt = strchr(ctx->recv_indicator, '\0');
@@ -392,6 +401,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 	    memcpy(tempbuff, indicpt, WINLEN - data_size);
 	    memset(ctx->recv_indicator, '\0', WINLEN);
             memcpy(ctx->recv_indicator, tempbuff, WINLEN - data_size);
+	    }
 
             /* deal with connection teardown, if need be */
             if (in_header->th_flags & TH_ACK){
@@ -493,7 +503,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 DEBUG("State: LAST-ACK\n");
             }
         }
-        if (event & TIMEOUT)
+        if (event == TIMEOUT)
         {
         	/* TIMEOUT--resend all packets in ctx->unackd_packets */
         	packet_t *resendpack;
@@ -505,7 +515,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 			clock_gettime(CLOCK_REALTIME, &(resendpack->start_time)); 
         		((STCPHeader *)(resendpack->packet))->th_ack = htonl(ctx->recv_next);
         		stcp_network_send(sd, resendpack->packet, resendpack->packet_size, NULL);
-			DEBUG("Resent packet with sequence number %d\n", ((STCPHeader *)(resendpack->packet))->th_seq);
+			DEBUG("Resent packet with sequence number %d\n", ntohl(((STCPHeader *)(resendpack->packet))->th_seq));
         	}
         	list_iterator_stop(ctx->unackd_packets);
     	}
