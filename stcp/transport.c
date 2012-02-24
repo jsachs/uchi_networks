@@ -128,6 +128,10 @@ void transport_init(mysocket_t sd, bool_t is_active)
     ctx->unackd_packets = &unackd;
     list_init(ctx->unackd_packets);
     
+    /* used for setting timeouts */
+    struct timespec timestart;
+    struct timespec *timeout;
+    
     /* XXX: you should send a SYN packet here if is_active, or wait for one
      * to arrive if !is_active.  after the handshake completes, unblock the
      * application with stcp_unblock_application(sd).  you may also use
@@ -157,7 +161,18 @@ void transport_init(mysocket_t sd, bool_t is_active)
             /* the client now waits for a SYN/ACK */
             while(ctx->connection_state == CSTATE_SYN_SENT)
             {
-                unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
+                timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
+                timeout = &timestart;
+                    
+                timeout->tv_sec += ctx->rto.tv_sec;
+                timeout->tv_nsec += ctx->rto.tv_nsec;
+                    
+                if (timeout->tv_nsec >= 1000000000) {
+                    timeout->tv_sec  += timeout->tv_nsec / 1000000000;
+                    timeout->tv_nsec = timeout->tv_nsec % 1000000000;
+                }
+                
+                unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, timeout); /* yes we need to add timeout later */
                 
                 if(event & NETWORK_DATA)
                 {
@@ -196,7 +211,19 @@ void transport_init(mysocket_t sd, bool_t is_active)
         {
             ctx->send_unack = ctx->initial_sequence_num;
             ctx->send_next = ctx->send_unack;
-            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA|TIMEOUT, NULL); /* yes we need to add timeout later */
+            
+            timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
+            timeout = &timestart;
+            
+            timeout->tv_sec += ctx->rto.tv_sec;
+            timeout->tv_nsec += ctx->rto.tv_nsec;
+            
+            if (timeout->tv_nsec >= 1000000000) {
+                timeout->tv_sec  += timeout->tv_nsec / 1000000000;
+                timeout->tv_nsec = timeout->tv_nsec % 1000000000;
+            }
+            
+            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, timeout); /* yes we need to add timeout later */
             if(event & NETWORK_DATA){
                 STCPHeader *header = (STCPHeader *) malloc(sizeof(STCPHeader));
                 tcplen = recv_packet(sd, ctx, NULL, 0, header);
@@ -224,7 +251,18 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
         while(ctx->connection_state == CSTATE_SYN_RECEIVED)
         {
-            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA|TIMEOUT, NULL);
+            timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
+            timeout = &timestart;
+            
+            timeout->tv_sec += ctx->rto.tv_sec;
+            timeout->tv_nsec += ctx->rto.tv_nsec;
+            
+            if (timeout->tv_nsec >= 1000000000) {
+                timeout->tv_sec  += timeout->tv_nsec / 1000000000;
+                timeout->tv_nsec = timeout->tv_nsec % 1000000000;
+            }
+            
+            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, timeout);
             if(event & NETWORK_DATA){
             	 STCPHeader *header = (STCPHeader *) buffer;
                 tcplen = recv_packet(sd, ctx, NULL, 0, header);
