@@ -299,17 +299,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         struct timespec timestart;
         struct timespec *timeout;
 
-        if (ctx->send_unack < ctx->send_next)
-        { /* SHOULD THIS BE RECV_NEXT? */
+
+        if (ctx->send_unack < ctx->send_next){ 
             timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
-	    timeout = &timestart;
+            timeout = &timestart;
             timeout->tv_sec += ctx->rto;
             if (timeout->tv_sec <= time(NULL))
-            /*earliest unacked packet has timed out, unless it's currently sitting in buffer */
-            eventflag = NETWORK_DATA|TIMEOUT;
+                /*earliest unacked packet has timed out, unless it's currently sitting in buffer */
+                eventflag = NETWORK_DATA|TIMEOUT;
         }
-        else
-        	  timeout = NULL; /* WHY IS IT DEFAULTING TO THIS? */
+        else    timeout = NULL; 
 
         
         
@@ -492,7 +491,21 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 DEBUG("State: LAST-ACK\n");
             }
         }
-    }
+        if (event & TIMEOUT)
+        {
+        	/* TIMEOUT--resend all packets in ctx->unackd_packets */
+        	packet_t *resendpack;
+        	list_iterator_start(ctx->unackd_packets);
+        	while (list_iterator_hasnext(ctx->unackd_packets)){
+        		resendpack = (packet_t *)list_iterator_next(ctx->unackd_packets);
+        		/* increment retries */
+        		resendpack->retry_count++;
+        		((STCPHeader *)(resendpack->packet))->th_ack = htonl(ctx->recv_next);
+        		stcp_network_send(sd, resendpack->packet, resendpack->packet_size, NULL);
+        }
+        list_iterator_stop(ctx->unackd_packets);
+    	}
+   }
 }
 
 
@@ -558,7 +571,7 @@ static void packet_t_remove(context_t *ctx){
 
         
         /* if all the data in the packet was acknowledged, discard and delete from list */
-        if (ctx->send_unack > oldpack->seq_num + (oldpack->packet_size - sizeof(STCPHeader))){
+        if (ctx->send_unack >= oldpack->seq_num + (oldpack->packet_size - sizeof(STCPHeader))){
         	   free(oldpack->packet);
         	   oldpack->packet = NULL;
             list_delete_at(ctx->unackd_packets, 0);
@@ -747,7 +760,7 @@ static void update_rto(context_t *ctx, packet_t *packet)
     /* check to see if the packet has been retransmitted
      * if so, return and do nothing to the RTO
      */
-    if(packet->retry_count) return;
+    if (packet->retry_count) return;
     
     /* start by getting the RTT of the acked packet */
     struct timespec tp;
