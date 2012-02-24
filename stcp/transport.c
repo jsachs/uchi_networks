@@ -812,6 +812,12 @@ static void update_rto(context_t *ctx, packet_t *packet)
     ctx->rto.tv_sec = ctx->srtt.tv_sec + max(G, K*(ctx->rttvar_sec));
     ctx->rto.tv_nsec = ctx->srtt.tv_nsec + max(G, K*(ctx->rttvar_nsec));
     
+    /* ensure the nsec field is not too large */
+    if (ctx->rto.tv_nsec > 1000000000) {
+        ctx->rto.tv_nsec -= 1000000000;
+        ctx->rto.tv_sec += 1;
+    }
+    
     return;
 }
 
