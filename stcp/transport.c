@@ -285,7 +285,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     char payload[MAXLEN];
     STCPHeader *in_header;
     void *packtosend;
-    char *buffpt;
+    char *indicpt;
     char tempbuff[WINLEN];
     stcp_event_type_t eventflag;
     
@@ -339,9 +339,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     /*create and send packet*/
                     packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, tcplen);
                     memcpy(packtosend + sizeof(STCPHeader), buffer, tcplen);
-                    
-                    DEBUG("Preparing to send packet with payload %s\n", (char *)packtosend + HEADERSIZE);
-                    
                     stcp_network_send(sd, packtosend, sizeof(STCPHeader) + tcplen, NULL);
                     DEBUG("Packet of payload size %d, ack number %d, seq number %d sent to network\n", tcplen, ctx->recv_next, ctx->send_next);
                     packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen); /* now a packet has been pushed onto the unacked queue */
@@ -369,7 +366,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             
             
             /* send ACK as long as it's not past our window, and actually contained data */
-            if( /*ctx->recv_next >= ntohl(in_header->th_seq) && */ data_size > 0){
+            if(data_size > 0 || data_size == -2){ /* -2 indicates it received old data, which we should not send to the application */
                 packtosend = (void *)make_stcp_packet(TH_ACK, ctx->send_next, ctx->recv_next, 0);
                 stcp_network_send(sd, packtosend, sizeof(STCPHeader), NULL);
                 free(packtosend);
@@ -385,11 +382,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             
             /* slide the window over */
-            buffpt = strchr(ctx->recv_buffer, '\0');
-            data_size = buffpt - ctx->recv_buffer;
-            memcpy(tempbuff, buffpt, WINLEN - data_size);
+            indicpt = strchr(ctx->recv_indicator, '\0');
+            data_size = indicpt - ctx->recv_indicator;
+            memcpy(tempbuff, ctx->recv_buffer + data_size, WINLEN - data_size);
             memset(ctx->recv_buffer, '\0', WINLEN);
             memcpy(ctx->recv_buffer, tempbuff, WINLEN - data_size);
+
+	    /* slide window indicator over */
+	    memcpy(tempbuff, indicpt, WINLEN - data_size);
+	    memset(ctx->recv_indicator, '\0', WINLEN);
+            memcpy(ctx->recv_indicator, tempbuff, WINLEN - data_size);
 
             /* deal with connection teardown, if need be */
             if (in_header->th_flags & TH_ACK){
@@ -500,10 +502,12 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         		resendpack = (packet_t *)list_iterator_next(ctx->unackd_packets);
         		/* increment retries */
         		resendpack->retry_count++;
+			clock_gettime(CLOCK_REALTIME, &(resendpack->start_time)); 
         		((STCPHeader *)(resendpack->packet))->th_ack = htonl(ctx->recv_next);
         		stcp_network_send(sd, resendpack->packet, resendpack->packet_size, NULL);
-        }
-        list_iterator_stop(ctx->unackd_packets);
+			DEBUG("Resent packet with sequence number %d\n", ((STCPHeader *)(resendpack->packet))->th_seq);
+        	}
+        	list_iterator_stop(ctx->unackd_packets);
     	}
    }
 }
@@ -632,7 +636,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
     void *payload;
     void *buff = calloc(1, sizeof(STCPHeader) + MAXOPS + MAXLEN);
     size_t recv_window_size;
-    size_t data_to_app;
+    int data_to_app = 0;
     
     /* zero out recvbuff and header so we're extra-sure there's no harm in re-using them */
     memset(recvbuff, '\0', buffsize);
@@ -654,8 +658,9 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         		payload = buff + (WORDSIZE * header->th_off);
         		if (buffer_offset < 0){
         			buffer_offset = 0;
-        			if (ntohl(header->th_seq) + paylen < ctx->recv_next){
+        			if (ntohl(header->th_seq) + paylen <= ctx->recv_next){
         				paylen = 0;
+					data_to_app = -2;
         			}
         			else{
         				payload += ctx->recv_next - ntohl(header->th_seq);
@@ -679,10 +684,11 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         		/* update recv_next */
         		ctx->recv_next += strchr(ctx->recv_buffer, '\0') - ctx->recv_buffer;
         		
-        		data_to_app = strchr(ctx->recv_buffer, '\0') - ctx->recv_buffer;
+			if (data_to_app != -2)
+        			data_to_app = strchr(ctx->recv_buffer, '\0') - ctx->recv_buffer;
         }
         else 
-        		data_to_app = paylen;
+        		data_to_app = 0;
 
 
         /* if packet acknowledges previously unacknowledged data, update send_unack */
