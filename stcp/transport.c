@@ -310,8 +310,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             timeout->tv_nsec += ctx->rto.tv_nsec;
 	    
             if (timeout->tv_nsec >= 1000000000) {
-                timeout->tv_nsec -= 1000000000;
-                timeout->tv_sec  += 1;
+                timeout->tv_sec  += timeout->tv_nsec / 1000000000;
+                timeout->tv_nsec = timeout->tv_nsec % 1000000000;
             }
             /*if (ctx->send_unack%5 == 0){*/
                 DEBUG("Timeout: %d\n", timeout->tv_sec);
@@ -832,8 +832,9 @@ static void update_rto(context_t *ctx, packet_t *packet)
     
     /* ensure the nsec field is not too large */
     if (ctx->rto.tv_nsec >= 1000000000) {
-        ctx->rto.tv_nsec -= 1000000000;
-        ctx->rto.tv_sec  += 1;
+        ctx->rto.tv_sec  += ctx->rto.tv_nsec / 1000000000;
+        ctx->rto.tv_nsec = ctx->rto.tv_nsec % 1000000000;
+        
     }
 
     return;
