@@ -25,6 +25,7 @@
 
 #define DEBUG(x, args...) printf(x, ## args)
 #define max(a, b)  ( (a > b) ? (a) : (b) )
+#define min(a, b)  ( (a < b) ? (a) : (b) )
 
 #define MAXLEN 536        /* maximum payload size */
 #define MAXOPS 40         /* maximum number of bytes for options */
@@ -117,8 +118,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
     /* ensures this array begins as entirely null characters */
     memset(ctx->recv_indicator, '\0', WINLEN);
-    ctx->rto.tv_sec = 3;
-    ctx->rto.tv_nsec = 0;
     
     char buffer[sizeof(STCPHeader) + MAXLEN];
     
@@ -309,11 +308,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 
             timeout->tv_sec += ctx->rto.tv_sec;
             timeout->tv_nsec += ctx->rto.tv_nsec;
-            if (ctx->send_unack%5 == 0){
-                DEBUG("Timeout: %d\n", timeout->tv_sec);
-            	DEBUG("RTO: %d\n", ctx->rto);
-                DEBUG("Current time: %d\n", time(NULL));
+	    
+            if (timeout->tv_nsec >= 1000000000) {
+                timeout->tv_nsec -= 1000000000;
+                timeout->tv_sec  += 1;
             }
+            /*if (ctx->send_unack%5 == 0){*/
+                DEBUG("Timeout: %d\n", timeout->tv_sec);
+            	DEBUG("RTO: %d, %ld\n", ctx->rto.tv_sec, ctx->rto.tv_nsec);
+                DEBUG("Current time: %d\n", time(NULL));
+            /*}*/
             if (timeout->tv_sec <= time(NULL))
             /*earliest unacked packet has timed out, unless it's currently sitting in buffer */
                 eventflag = NETWORK_DATA|TIMEOUT;
@@ -335,13 +339,14 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             DEBUG("Application Data\n");
             /* the application has requested that data be sent */
             /* we should send as long as send_wind > 0 */
-            if(ctx->send_wind > 0)
+	    int open_window = ctx->send_wind - (ctx->send_next - ctx->send_unack);
+            if(open_window > 0)
             {
                 int send_size;
                 
                 /* only read in as much from app as we can send */
-                if(ctx->send_wind > MAXLEN) send_size = MAXLEN;
-				else send_size = ctx->send_wind;
+                if(open_window > MAXLEN) send_size = MAXLEN;
+				else send_size = open_window;
                 
                 void* buffer = (char *) calloc(1, send_size);
                 
@@ -357,7 +362,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen); /* now a packet has been pushed onto the unacked queue */
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
-                    ctx->send_wind -= tcplen;
+                    /* ctx->send_wind -= tcplen; */
                 }
                 free(buffer);
                 buffer = NULL;
@@ -415,6 +420,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     ctx->connection_state = CSTATE_FIN_WAIT2;
                 }
                 /* go from CLOSE-WAIT --> CLOSED */
+		/*
                 if(ctx->connection_state == CSTATE_CLOSE_WAIT){
                     DEBUG("State: CLOSED\n");
                     ctx->connection_state = CSTATE_CLOSED;
@@ -422,6 +428,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     in_header = NULL;
                     break;
                 }
+		*/
                 /* go from LAST-ACK --> CLOSED */
                 if(ctx->connection_state == CSTATE_LAST_ACK) {
                     DEBUG("State: CLOSED\n");
@@ -696,10 +703,10 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         		memset(ctx->recv_indicator + buffer_offset, '1', paylen);
         		
         		/* update recv_next */
-        		ctx->recv_next += strchr(ctx->recv_buffer, '\0') - ctx->recv_buffer;
+        		ctx->recv_next += strchr(ctx->recv_indicator, '\0') - ctx->recv_indicator;
         		
 			if (data_to_app != -2)
-        			data_to_app = strchr(ctx->recv_buffer, '\0') - ctx->recv_buffer;
+        			data_to_app = strchr(ctx->recv_indicator, '\0') - ctx->recv_indicator;
         }
         else 
         		data_to_app = 0;
@@ -717,7 +724,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         		ctx->recv_next = ntohl(header->th_seq) + 1;
         
         /* also update sender window size */
-        send_win = ntohs(header->th_win) - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
+        send_win = ntohs(header->th_win); /* - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
         if (send_win <= WINLEN)
             ctx->send_wind = send_win;
         else
@@ -785,9 +792,11 @@ static void update_rto(context_t *ctx, packet_t *packet)
     /* start by getting the RTT of the acked packet */
     struct timespec tp;
     clock_gettime(CLOCK_REALTIME, &tp);
+    
     double diff_sec = difftime(tp.tv_sec, packet->start_time.tv_sec);
-    long diff_nsec = tp.tv_nsec - packet->start_time.tv_nsec;
-    time_t rtt_sec = (time_t) diff_sec;
+    time_t rtt_sec = (time_t) diff_sec;    
+
+    long diff_nsec = max(tp.tv_nsec, packet->start_time.tv_nsec) - min(tp.tv_nsec, packet->start_time.tv_nsec);
     long rtt_nsec = diff_nsec;
     
     /* update the values of SRTT and RTTVAR */
@@ -813,11 +822,11 @@ static void update_rto(context_t *ctx, packet_t *packet)
     ctx->rto.tv_nsec = ctx->srtt.tv_nsec + max(G, K*(ctx->rttvar_nsec));
     
     /* ensure the nsec field is not too large */
-    if (ctx->rto.tv_nsec > 1000000000) {
+    if (ctx->rto.tv_nsec >= 1000000000) {
         ctx->rto.tv_nsec -= 1000000000;
-        ctx->rto.tv_sec += 1;
+        ctx->rto.tv_sec  += 1;
     }
-    
+
     return;
 }
 
