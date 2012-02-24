@@ -71,9 +71,10 @@ typedef struct
     char recv_indicator[WINLEN];
     
     /* variables for timeout operations */
-    time_t rto;
-    time_t srtt;
-    long   rttvar;
+    struct timespec rto;
+    struct timespec srtt;
+    long   rttvar_sec;
+    long   rttvar_nsec;
     
     list_t *unackd_packets;
     
@@ -303,7 +304,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         if (ctx->send_unack < ctx->send_next){ 
             timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
             timeout = &timestart;
-            timeout->tv_sec += ctx->rto;
+            timeout->tv_sec += ctx->rto.tv_sec;
+            timeout->tv_nsec += ctx->rto.tv_nsec;
             if (timeout->tv_sec <= time(NULL))
                 /*earliest unacked packet has timed out, unless it's currently sitting in buffer */
                 eventflag = NETWORK_DATA|TIMEOUT;
@@ -771,23 +773,32 @@ static void update_rto(context_t *ctx, packet_t *packet)
     /* start by getting the RTT of the acked packet */
     struct timespec tp;
     clock_gettime(CLOCK_REALTIME, &tp);
-    double diff = difftime(tp.tv_sec, packet->start_time.tv_sec);
-    time_t rtt = (time_t) diff;
+    double diff_sec = difftime(tp.tv_sec, packet->start_time.tv_sec);
+    long diff_nsec = tp.tv_nsec - packet->start_time.tv_nsec;
+    time_t rtt_sec = (time_t) diff;
+    long rtt_nsec = diff_nsec;
     
     /* update the values of SRTT and RTTVAR */
     if(!init)
     {
-        ctx->srtt   = rtt;
-        ctx->rttvar = rtt/2;
+        ctx->srtt.tv_sec = rtt_sec;
+        ctx->srtt.tv_nsec = rtt_nsec;
+        ctx->rttvar_sec = rtt_sec/2;
+        ctx->rttvar_nsec = rtt_nsec/2;
+        
         init = 1;
     }
     else
     {
-        ctx->rttvar = (1 - BETA)*ctx->rttvar + BETA*abs(ctx->srtt - rtt);
-        ctx->srtt   = (1 - ALPHA)*ctx->srtt  + ALPHA*rtt;
+        ctx->rttvar_sec = (1 - BETA)*ctx->rttvar_sec + BETA*abs(ctx->srtt.tv_sec - rtt_sec);
+        ctx->rttvar_nsec = (1 - BETA)*ctx->rttvar_nsec + BETA*abs(ctx->srtt.tv_nsec - rtt_nsec);
+        
+        ctx->srtt.tv_sec = (1 - ALPHA)*ctx->srtt.tv_sec  + ALPHA*rtt_sec;
+        ctx->srtt.tv_nsec = (1 - ALPHA)*ctx->srtt.tv_nsec  + ALPHA*rtt_nsec;
     }
     /* then the value of RTO is updated */
-    ctx->rto = ctx->srtt + max(G, K*(ctx->rttvar));
+    ctx->rto.tv_sec = ctx->srtt.tv_sec + max(G, K*(ctx->rttvar_sec));
+    ctx->rto.tv_nsec = ctx->srtt.tv_nsec + max(G, K*(ctx->rttvar_nsec));
     
     return;
 }
