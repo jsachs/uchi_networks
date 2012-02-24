@@ -117,7 +117,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
     /* ensures this array begins as entirely null characters */
     memset(ctx->recv_indicator, '\0', WINLEN);
-    ctx->rto = 3;
+    ctx->rto.tv_sec = 3;
+    ctx->rto.tv_nsec = 0;
     
     char buffer[sizeof(STCPHeader) + MAXLEN];
     
@@ -786,7 +787,7 @@ static void update_rto(context_t *ctx, packet_t *packet)
     clock_gettime(CLOCK_REALTIME, &tp);
     double diff_sec = difftime(tp.tv_sec, packet->start_time.tv_sec);
     long diff_nsec = tp.tv_nsec - packet->start_time.tv_nsec;
-    time_t rtt_sec = (time_t) diff;
+    time_t rtt_sec = (time_t) diff_sec;
     long rtt_nsec = diff_nsec;
     
     /* update the values of SRTT and RTTVAR */
