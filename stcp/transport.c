@@ -209,21 +209,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         /* wait for a SYN packet */
         while(ctx->connection_state == CSTATE_CLOSED)
         {
-            ctx->send_unack = ctx->initial_sequence_num;
-            ctx->send_next = ctx->send_unack;
-            
-            timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
-            timeout = &timestart;
-            
-            timeout->tv_sec += ctx->rto.tv_sec;
-            timeout->tv_nsec += ctx->rto.tv_nsec;
-            
-            if (timeout->tv_nsec >= 1000000000) {
-                timeout->tv_sec  += timeout->tv_nsec / 1000000000;
-                timeout->tv_nsec = timeout->tv_nsec % 1000000000;
-            }
-            
-            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, timeout); /* yes we need to add timeout later */
+            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
             if(event & NETWORK_DATA){
                 STCPHeader *header = (STCPHeader *) malloc(sizeof(STCPHeader));
                 tcplen = recv_packet(sd, ctx, NULL, 0, header);
@@ -237,6 +223,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                     ctx->connection_state = CSTATE_SYN_RECEIVED;
                     header = make_stcp_packet(TH_SYN|TH_ACK, ctx->send_unack, ctx->recv_next, 0);
                     tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
+                    packet_t_create(ctx, header, sizeof(STCPHeader));
                     /* send out a SYN/ACK packet to the initiating client */
                     DEBUG("SYN/ACK sent with ack number %d and seq number %d\n", htonl(header->th_ack), htonl(header->th_seq));
                     if(tcplen < 0){
