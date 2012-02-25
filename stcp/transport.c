@@ -718,7 +718,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         		ctx->recv_next = ntohl(header->th_seq) + 1;
         
         /* also update sender window size */
-        send_win = ntohs(header->th_win); /* - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
+        send_win = ntohs(header->th_win); /* advertised sender window minus data still in transit to sender */
         if (send_win <= WINLEN)
             ctx->send_wind = send_win;
         else
