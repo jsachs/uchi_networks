@@ -67,7 +67,9 @@ typedef struct
     tcp_seq send_wind;
     tcp_seq recv_next;
     tcp_seq recv_wind;
-
+    
+    /* the recv_buffer is supplemented by an indicator buffer
+     * of 1s and NULLs to track where data exists in the recv_buffer */
     char recv_buffer[WINLEN];
     char recv_indicator[WINLEN];
     
@@ -77,6 +79,7 @@ typedef struct
     long   rttvar_sec;
     long   rttvar_nsec;
     
+    /* this linked list servers as our send buffer */
     list_t *unackd_packets;
     
 } context_t;
@@ -147,6 +150,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         /* first step in the handshake: sending a SYN packet */
         tcplen = stcp_network_send(sd, header, sizeof(STCPHeader), NULL);
         ctx->send_next = ctx->send_unack;
+        /* this ensures the SYN packet will be resent if it is dropped/times out */
         packet_t_create(ctx, header, sizeof(STCPHeader));
         DEBUG("Sent SYN packet with seq number %d\n", ntohl(header->th_seq));
         
@@ -176,6 +180,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 
                 if(event & NETWORK_DATA)
                 {
+                    /* we now expect the next packet to be a SYN-ACK */
                     tcplen = recv_packet(sd, ctx, NULL, 0,  header);
                     flags = (TH_SYN|TH_ACK);
                     if( tcplen < 0 || !((header->th_flags & TH_SYN)&&(header->th_flags & TH_ACK))) {
@@ -209,7 +214,10 @@ void transport_init(mysocket_t sd, bool_t is_active)
         /* wait for a SYN packet */
         while(ctx->connection_state == CSTATE_CLOSED)
         {
-            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL); /* yes we need to add timeout later */
+            ctx->send_unack = ctx->initial_sequence_num;
+            ctx->send_next = ctx->send_unack;
+            unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA|TIMEOUT, NULL);
+
             if(event & NETWORK_DATA){
                 STCPHeader *header = (STCPHeader *) malloc(sizeof(STCPHeader));
                 tcplen = recv_packet(sd, ctx, NULL, 0, header);
@@ -231,6 +239,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                         errno = ECONNABORTED;
                         break;
                     }
+                    /* ensures the SYN-ACK will be resent if it is not ACK'd */
                     packet_t_create(ctx, header, sizeof(STCPHeader));
                     ctx->send_next++;
                 }
@@ -330,19 +339,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         if (ctx->send_unack < ctx->send_next){ 
             timestart = ((packet_t *)list_get_at(ctx->unackd_packets, 0))->start_time;
             timeout = &timestart;
-
+            
+            /* constructs the timeout with absolute time by adding the RTO */
             timeout->tv_sec += ctx->rto.tv_sec;
             timeout->tv_nsec += ctx->rto.tv_nsec;
-	    
+	        
+            /* ensures no nanosecond overflow */
             if (timeout->tv_nsec >= 1000000000) {
                 timeout->tv_sec  += timeout->tv_nsec / 1000000000;
                 timeout->tv_nsec = timeout->tv_nsec % 1000000000;
             }
-            /*if (ctx->send_unack%5 == 0){*/
-                DEBUG("Timeout: %d\n", timeout->tv_sec);
-            	DEBUG("RTO: %d, %ld\n", ctx->rto.tv_sec, ctx->rto.tv_nsec);
-                DEBUG("Current time: %d\n", time(NULL));
-            /*}*/
             if (timeout->tv_sec <= time(NULL))
             /*earliest unacked packet has timed out, unless it's currently sitting in buffer */
                 eventflag = NETWORK_DATA|TIMEOUT;
@@ -387,7 +393,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     packet_t_create(ctx, packtosend, sizeof(STCPHeader) + tcplen); /* now a packet has been pushed onto the unacked queue */
                     /* update window length and send_next */
                     ctx->send_next += tcplen;
-                    /* ctx->send_wind -= tcplen; */
                 }
                 free(buffer);
                 buffer = NULL;
@@ -424,18 +429,18 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 stcp_app_send(sd, ctx->recv_buffer, data_size);
            
             
-            /* slide the window over */
-            indicpt = strchr(ctx->recv_indicator, '\0');
-            data_size = indicpt - ctx->recv_indicator;
-            memcpy(tempbuff, ctx->recv_buffer + data_size, WINLEN - data_size);
-            memset(ctx->recv_buffer, '\0', WINLEN);
-            memcpy(ctx->recv_buffer, tempbuff, WINLEN - data_size);
+                /* slide the window over */
+                indicpt = strchr(ctx->recv_indicator, '\0');
+                data_size = indicpt - ctx->recv_indicator;
+                memcpy(tempbuff, ctx->recv_buffer + data_size, WINLEN - data_size);
+                memset(ctx->recv_buffer, '\0', WINLEN);
+                memcpy(ctx->recv_buffer, tempbuff, WINLEN - data_size);
 
-	    /* slide window indicator over */
-	    memcpy(tempbuff, indicpt, WINLEN - data_size);
-	    memset(ctx->recv_indicator, '\0', WINLEN);
-            memcpy(ctx->recv_indicator, tempbuff, WINLEN - data_size);
-	    }
+                /* slide window indicator over */
+                memcpy(tempbuff, indicpt, WINLEN - data_size);
+                memset(ctx->recv_indicator, '\0', WINLEN);
+                memcpy(ctx->recv_indicator, tempbuff, WINLEN - data_size);
+            }
 
             /* deal with connection teardown, if need be */
             if (in_header->th_flags & TH_ACK){
@@ -444,16 +449,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     DEBUG("State: FIN-WAIT2\n");
                     ctx->connection_state = CSTATE_FIN_WAIT2;
                 }
-                /* go from CLOSE-WAIT --> CLOSED */
-		/*
-                if(ctx->connection_state == CSTATE_CLOSE_WAIT){
-                    DEBUG("State: CLOSED\n");
-                    ctx->connection_state = CSTATE_CLOSED;
-                    free(in_header);
-                    in_header = NULL;
-                    break;
-                }
-		*/
                 /* go from LAST-ACK --> CLOSED */
                 if(ctx->connection_state == CSTATE_LAST_ACK) {
                     DEBUG("State: CLOSED\n");
@@ -471,7 +466,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     break;
                 }
             }
-            
+            /* branching for the receipt of a FIN packet */
             if (in_header->th_flags & TH_FIN){
                 DEBUG("Received FIN packet\n");
                 /* Acknowledge FIN, which counts as a byte */
@@ -598,9 +593,11 @@ void our_dprintf(const char *format,...)
 
 
 /**********************************************************************/
-
-/* adds a record of new, unacknowledged packet to unackd_packets
+/*
+ * adds a record of new, unacknowledged packet to unackd_packets
  * should be called BEFORE updating send_next
+ * the list of unacked packets serves as our send buffer
+ * it allows for easy management of timeouts and retransmissions
  */
 
 static void packet_t_create(context_t *ctx, void *packet, int packetsize){
@@ -758,7 +755,7 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
         		ctx->recv_next = ntohl(header->th_seq) + 1;
         
         /* also update sender window size */
-        send_win = ntohs(header->th_win); /* - (ctx->send_next - ctx->send_unack); /* advertised sender window minus data still in transit to sender */
+        send_win = ntohs(header->th_win); /* advertised sender window minus data still in transit to sender */
         if (send_win <= WINLEN)
             ctx->send_wind = send_win;
         else
@@ -817,8 +814,8 @@ int recv_packet(mysocket_t sd, context_t *ctx, void *recvbuff, size_t buffsize, 
 static void update_rto(context_t *ctx, packet_t *packet)
 {
     static int init = 0;
-    
-    /* check to see if the packet has been retransmitted
+    /*
+     * check to see if the packet has been retransmitted
      * if so, return and do nothing to the RTO
      */
     if (packet->retry_count) return;
