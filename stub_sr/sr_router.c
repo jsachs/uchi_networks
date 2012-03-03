@@ -236,7 +236,7 @@ void update_ip_hdr(struct sr_instance *sr, void *recv_datagram, void *send_datag
     //update TTL and checksum
     send_header->ip_ttl--;
     send_header->ip_sum = 0;
-    send_header->ip_sum = compute_ip_checksum((uint16_t*) send_datagram, ip_len);
+    send_header->ip_sum = compute_checksum((uint16_t*) send_datagram, ip_len * 2); //we want length in 16-bit words
     
     return;
 }
@@ -267,7 +267,7 @@ void ip_header_create(struct sr_instance *sr, void *send_datagram, struct in_add
     ip_header->ip_src = s_ip;
     ip_header->ip_dst = d_ip;
     ip_header->ip_sum = 0;
-    ip_header->ip_sum = compute_ip_checksum((uint16_t*) iphdr, iphdr->ip_hl * WORD_SIZE);
+    ip_header->ip_sum = compute_checksum((uint16_t*) ipheader, ipheader->ip_hl * 2); //magic number for 16-bit word, worry about it later
     return;
 }
 
@@ -291,19 +291,24 @@ void generate_icmp_echo(struct sr_instance *sr, void *recv_datagram, void *send_
     
     /* get some useful info about lengths */
     size_t ip_length = ntohs(recv_header->ip_len) * WORD_SIZE;
-    size_t icmp_length = ip_length - sizeof(struct ip);
+    size_t icmp_length = ip_length - recv_header->ip_hl;
+    
+    if(!icmp_length%2){
+        ip_length++;
+        icmp_length++;
+    }
     
     /* actually create new packet */
-    send_datagram = malloc(ip_len);
+    send_datagram = calloc(ip_length, sizeof(char));
     struct ip *send_header = (struct ip *)send_datagram;
     memcpy(send_datagram, recv_datagram, ip_len);
-    struct icmp_hdr *icmp_header = (struct icmp_hdr *)(send_datagram + sizeof(struct ip));
+    struct icmp_hdr *icmp_header = (struct icmp_hdr *)(send_datagram + recv_header->ip_hl));
     
     assert(icmp_header);
     
     icmp_header->icmp_type = 0;
     icmp_header->checksum = 0;
-    compute_icmp_checksum(icmp_header, icmp_length);
+    icmp_header->checksum = compute_checksum(icmp_header, icmp_length / 2); //so it's in 16-bit words
     ip_header_create(sr, send_datagram, ip_dst, ip_length); //this function only create headers for ICMP packets 
     return;
     
@@ -342,8 +347,9 @@ void generate_icmp_error(struct sr_instance *sr, void *recv_datagram, void *send
     
     icmp_header->type = icmp_type;
     icmp_header->code = icmp_code;
+    icmp_header->unused = 0;
     memcpy(icmp_data, recv_datagram, icmp_data_len);
-    compute_icmp_checksum(icmp_header, sizeof(struct icmp_hdr) + icmp_data_len);
+    icmp_header->checksum = compute_checksum(icmp_header, sizeof(struct icmp_hdr) + icmp_data_len);
     ip_header_create(sr, send_datagram, sizeof(struct ip) + sizeof(struct icmp_header) + icmp_data_len);
     return; 
     
