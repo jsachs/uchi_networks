@@ -29,6 +29,22 @@
 #define ICMP_HDR_LEN 8
 #define ICMP_DATA_LEN 8
 #define ARP_CACHE_TIMEOUT 15
+#define INIT_TTL 255
+
+/* define some constants for ICMP types/codes and probably some other codes later on */
+#define ECHO_REPLY 8
+#define DEST_UNREACH 3
+#define TIME_EXCEEDED 11
+
+#define HOST_UNREACH 1
+#define PORT_UNREACH 3
+#define TIME_INTRANSIT 0
+#define ECHO_CODE 0
+
+/* for size calculations */
+#define WORDTO16BIT 2
+#define BYTETO16BIT 2
+#define WORDTOBYTE  4
 
 
 struct icmp_hdr {
@@ -36,14 +52,6 @@ struct icmp_hdr {
     uint8_t  icmp_code;
     uint16_t icmp_sum;
     uint32_t icmp_unused;
-} __attribute__ ((packed));
-
-struct icmp_echoreply_hdr {
-    uint8_t  icmp_type;
-    uint8_t  icmp_code;
-    uint16_t icmp_sum;
-    uint16_t icmp_id;
-    uint16_t icmp_seqnum;
 } __attribute__ ((packed));
 
 struct arpc_entry {
@@ -117,7 +125,7 @@ void sr_init(struct sr_instance* sr)
  *
  * algorithm taken from www.netrino.com
  *---------------------------------------------------------------------*/
-static uint16_t compute_ip_checksum(uint16_t *ip_header, size_t len)
+static uint16_t compute_checksum(uint16_t *ip_header, size_t len)
 {
     assert(ip_header);
     
@@ -221,7 +229,7 @@ static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr);
  *
  *
  *---------------------------------------------------------------------*/
-static void icmp_create(struct ip *ip_header, struct icmp_hdr *icmp_header,
+/*static void icmp_create(struct ip *ip_header, struct icmp_hdr *icmp_header,
                         uint8_t type, uint8_t code, uint32_t s_ip, uint32_t d_ip,
                         uint8_t *icmp_data, size_t icmp_data_len)
 {
@@ -234,7 +242,7 @@ static void icmp_create(struct ip *ip_header, struct icmp_hdr *icmp_header,
     ip_header->ip_tos = 0;
     ip_header->ip_id = 0;
     ip_header->ip_off = 0;
-    ip_header->ip_ttl = 64;
+    ip_header->ip_ttl = INIT_TTL;
     ip_header->ip_p = IPPROTO_ICMP;
     ip_header->ip_len - htons(ip_header->ip_hl * WORD_SIZE + ICMP_HDR_LEN + icmp_data_len);
     (ip_header->ip_src).s_addr = s_ip;
@@ -249,7 +257,7 @@ static void icmp_create(struct ip *ip_header, struct icmp_hdr *icmp_header,
     memcpy(icmp_header + 1, icmp_data, icmp_data_len);
     icmp_header->icmp_sum = 0;
     icmp_header->icmp_sum = compute_ip_checksum((uint16_t*) icmp_header, ICMP_HDR_LEN + icmp_data_len);
-}
+} */
 
 
 /*--------------------------------------------------------------------- 
@@ -378,11 +386,11 @@ static void arp_create_reply(struct sr_ethernet_hdr *en_header, struct sr_arphdr
  * parameters given.
  * Is there a reason we need iface? I don't think so...
  *--------------------------------------------------------------------*/
-void update_ip_hdr(struct sr_instance *sr, void *recv_datagram, void *send_datagram, struct sr_iface *iface){
+void update_ip_hdr(struct sr_instance *sr, void *recv_datagram, void *send_datagram, struct sr_if *iface){
     assert(recv_datagram);
     struct ip *recv_header = (struct ip *)recv_datagram;
     size_t ip_len = ntohs(recv_header->ip_len);
-    size_t ip_header_len = recv_header->ip_hl * WORDTO16BIT
+    size_t ip_header_len = recv_header->ip_hl * WORDTO16BIT;
     send_datagram = malloc(ip_len);
     struct ip *send_header = (struct ip *)send_datagram;
     memcpy(send_datagram, recv_datagram, ip_len);
@@ -404,24 +412,23 @@ void update_ip_hdr(struct sr_instance *sr, void *recv_datagram, void *send_datag
  * This method fills in the IP header on send_datagram based on the 
  * parameters given.
  *--------------------------------------------------------------------*/
-void ip_header_create(struct sr_instance *sr, void *send_datagram, struct in_addr dst, struct in_addr src, size_t length)
+void ip_header_create(struct sr_instance *sr, struct ip *send_header, struct in_addr dst, struct in_addr src, size_t length)
 {
-    assert(send_datagram);
+    assert(send_header);
     
-    struct ip *ip_header = (struct ip *)send_datagram;
     
-    ip_header->ip_v = 4;
-    ip_header->ip_hl = 5;
-    ip_header->ip_tos = 0;
-    ip_header->ip_id = 0;
-    ip_header->ip_off = 0;
-    ip_header->ip_ttl = 64;
-    ip_header->ip_p = IPPROTO_ICMP;
-    ip_header->ip_len = length;
-    ip_header->ip_src = s_ip;
-    ip_header->ip_dst = d_ip;
-    ip_header->ip_sum = 0;
-    ip_header->ip_sum = compute_checksum((uint16_t*) ipheader, ipheader->ip_hl * WORDTO16BIT); 
+    send_header->ip_v = 4;
+    send_header->ip_hl = 5;
+    send_header->ip_tos = 0;
+    send_header->ip_id = 0;
+    send_header->ip_off = 0;
+    send_header->ip_ttl = INIT_TTL;
+    send_header->ip_p = IPPROTO_ICMP;
+    send_header->ip_len = length;
+    send_header->ip_src = dst;
+    send_header->ip_dst = src;
+    send_header->ip_sum = 0;
+    send_header->ip_sum = compute_checksum((uint16_t*) send_header, send_header->ip_hl * WORDTO16BIT); 
     return;
 }
 
@@ -440,8 +447,8 @@ void generate_icmp_echo(struct sr_instance *sr, void *recv_datagram, void *send_
     /* need to get pointers to various things */
     struct ip *recv_header = (struct ip *)recv_datagram;
     struct in_addr ip_dst, ip_src;
-    ip_dst.s_addr = recv_header->ip_src->s_addr;
-    ip_src.s_addr = recv_header->ip_dst->s_addr;
+    ip_dst.s_addr = recv_header->ip_src.s_addr;
+    ip_src.s_addr = recv_header->ip_dst.s_addr;
     
     /* get some useful info about lengths */
     size_t ip_length = ntohs(recv_header->ip_len); //in bytes   
@@ -450,24 +457,24 @@ void generate_icmp_echo(struct sr_instance *sr, void *recv_datagram, void *send_
     /* actually create new packet */
     send_datagram = calloc(ip_length, sizeof(char));
     struct ip *send_header = (struct ip *)send_datagram;
-    memcpy(send_datagram, recv_datagram, ip_len);
-    struct icmp_hdr *icmp_header = (struct icmp_hdr *)(send_datagram + recv_header->ip_hl * WORDTOBYTE));
+    memcpy(send_datagram, recv_datagram, ip_length);
+    struct icmp_hdr *icmp_header = (struct icmp_hdr *)(send_datagram + recv_header->ip_hl * WORDTOBYTE);
     
     assert(icmp_header);
     
     icmp_header->icmp_type = 0;
     icmp_header->icmp_code = 0;
-    icmp_header->checksum = 0;
+    icmp_header->icmp_sum = 0;
     
     //create a copy and pad it if data length is odd
     if (!icmp_length%2)
         icmp_length++;
     
-    void * checksum_copy = calloc(icmp_length * BYTETO16BIT, sizeof(char)); 
+    void *checksum_copy = calloc(icmp_length * BYTETO16BIT, sizeof(char)); 
     memcpy(checksum_copy, icmp_header, icmp_length * BYTETO16BIT); 
     
-    icmp_header->checksum = compute_checksum(checksum_copy, icmp_length);
-    ip_header_create(sr, send_datagram, ip_dst, ip_length); //this function only create headers for ICMP packets 
+    icmp_header->icmp_sum = compute_checksum(checksum_copy, icmp_length);
+    ip_header_create(sr, send_header, ip_dst, ip_src, ip_length); //this function only create headers for ICMP packets 
     
     free(checksum_copy);
     return;
@@ -488,13 +495,12 @@ void generate_icmp_error(struct sr_instance *sr, void *recv_datagram, void *send
     
     /* need to get pointers to various things */
     struct ip *recv_header = (struct ip *)recv_datagram;
-    struct in_addr ip_dst;
-    ip_dst.s_addr = recv_header->ip_src->s_addr;
-    ip_src.s_addr = recv_header->ip_dst->s_addr;
+    struct in_addr ip_dst, ip_src;
+    ip_dst.s_addr = recv_header->ip_src.s_addr;
+    ip_src.s_addr = recv_header->ip_dst.s_addr;
     
     /* get some useful info about lengths */
-    size_t ip_len = ntohs(recv_header->ip_len); //length of whole datagram, in bytes
-    size_t icmp_data_len = recv_header->ip_hl * TOBYTE + 2 * sizeof(uint32_t);      //length of echo data, in bytes
+    size_t icmp_data_len = recv_header->ip_hl * WORDTOBYTE + 2 * sizeof(uint32_t);      //length of echo data, in bytes
     size_t icmp_size_16bit = (sizeof(struct icmp_hdr) + icmp_data_len) / BYTETO16BIT;   //length of ICMP header and data, in 16-bit words
     
     /* packet includes IP header, ICMP header, and beginning of original packet */
@@ -506,12 +512,13 @@ void generate_icmp_error(struct sr_instance *sr, void *recv_datagram, void *send
     assert (icmp_header);
     assert (icmp_data);
     
-    icmp_header->type = icmp_type;
-    icmp_header->code = icmp_code;
-    icmp_header->unused = 0;
+    icmp_header->icmp_type = icmp_type;
+    icmp_header->icmp_code = icmp_code;
+    icmp_header->icmp_unused = 0;
+    icmp_header->icmp_sum = 0;
     memcpy(icmp_data, recv_datagram, icmp_data_len);
-    icmp_header->checksum = compute_checksum(icmp_header, icmp_size_16bit);
-    ip_header_create(sr, send_datagram, sizeof(struct ip) + sizeof(struct icmp_header) + icmp_data_len);
+    icmp_header->icmp_sum = compute_checksum((uint16_t *)icmp_header, icmp_size_16bit);
+    ip_header_create(sr, send_header, ip_dst, ip_src, sizeof(struct ip) + sizeof(struct icmp_hdr) + icmp_data_len);
     return; 
     
 }
@@ -544,10 +551,9 @@ void sr_handlepacket(struct sr_instance* sr,
     
     printf("*** -> Received packet of length %d \n",len);
     
-    struct sr_ethernet_hdr *recv_frame = (sr_ethernet_hdr *)packet;
+    struct sr_ethernet_hdr *recv_frame = (struct sr_ethernet_hdr *)packet;
     struct sr_ethernet_hdr *send_frame;
     uint8_t dest_mac[ETHER_ADDR_LEN];
-    uint8_t protocol;
     void *recv_datagram;    //a pointer to the incoming IP datagram/ARP packet, may or may not need its own memory
     void *send_datagram;    //a pointer to the outgoing IP datagram/ARP packet, gets its own memory
     struct sr_if *iface;
@@ -568,7 +574,6 @@ void sr_handlepacket(struct sr_instance* sr,
         
         /* Strip ethernet header off of packet */
         struct ip *recv_hdr;
-        struct ip *send_hdr;
         
         recv_hdr = (struct ip *)recv_datagram;
         
@@ -584,7 +589,7 @@ void sr_handlepacket(struct sr_instance* sr,
         }
         else {
             /* Has it timed out? */
-            if (ntohl(recv_datagram->ip_ttl) <= 0){
+            if (ntohl(recv_hdr->ip_ttl) <= 0){
                 generate_icmp_error(sr, recv_datagram, send_datagram, TIME_EXCEEDED, TIME_INTRANSIT);
                 memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t));
             }
@@ -606,7 +611,7 @@ void sr_handlepacket(struct sr_instance* sr,
             }
         }
     }
-    else if ( (struct sr_ethernet_hdr *)packet)->ether_type == ETHERTYPE_ARP)
+    else if ( ((struct sr_ethernet_hdr *)packet)->ether_type == ETHERTYPE_ARP)
     {
         struct sr_arphdr *arp_header = (struct sr_arphdr*) recv_datagram;
         if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_IP)
@@ -646,8 +651,8 @@ void sr_handlepacket(struct sr_instance* sr,
         
     //encapsulate and send datagram, if appropriate
     if (send_datagram != NULL) {
-        encapsulate(src, send_frame, send_datagram, dest_mac);
-        sr_send_packet(sr, send_frame, sizeof(send_frame), iface);
+        encapsulate(send_frame, send_datagram, dest_mac);
+        sr_send_packet(sr, (uint8_t *)send_frame, sizeof(send_frame), (char *) iface);
     }
     
     
