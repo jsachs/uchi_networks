@@ -110,10 +110,10 @@ void sr_init(struct sr_instance* sr)
 } /* -- sr_init -- */
 
 /*--------------------------------------------------------------------- 
- * Method: compute_ip_checksum(uint16_t const ipHeader[], int nWords)
+ * Method: compute_checksum(uint16_t const ipHeader[], int nWords)
  * Scope:  Local
  *
- * calculates a checksum value for IP headers
+ * calculates a checksum value for IP headers and ICMP messages
  *
  * algorithm taken from www.netrino.com
  *---------------------------------------------------------------------*/
@@ -125,7 +125,7 @@ static uint16_t compute_ip_checksum(uint16_t *ip_header, size_t len)
 
     while(len--) sum += *(ip_header++);
 
-    if(len%2) sum += *((uint8_t*) ip_header); // ensures even number of bytes
+    if(len%2) sum += *((uint8_t*) ip_header); // assuming even number of bytes
     
     while(sum>>16) sum = (sum >> 16) + (sum & 0xffff);
 
