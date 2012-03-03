@@ -116,19 +116,13 @@ static uint16_t compute_ip_checksum(uint16_t *ip_header, size_t len)
     assert(ip_header);
     
     uint16_t sum = 0; // right size?
-    /*
-     * IP headers always contain an even number of bytes.
-     */
+
     while(len--) sum += *(ip_header++);
-    /*
-     * Use carries to compute 1's complement sum.
-     */
-    if(len%2) sum += *((uint8_t*) ip_header);
+
+    if(len%2) sum += *((uint8_t*) ip_header); // ensures even number of bytes
     
     while(sum>>16) sum = (sum >> 16) + (sum & 0xffff);
-    /*
-     * Return the inverted 16-bit result.
-     */
+
     return ((uint16_t) ~sum);
 }
 
@@ -144,7 +138,7 @@ static struct sr_if *if_dst_check(struct sr_instance *sr, uint32_t ip)
     while(current_if && (ip != current_if->ip))
         current_if = current_if->next;
     
-    if(current_if) return current_if;
+    if (current_if) return current_if;
     
     return NULL;
 }
@@ -153,9 +147,31 @@ static struct sr_if *if_dst_check(struct sr_instance *sr, uint32_t ip)
  * Method: if_ip_search
  *
  *---------------------------------------------------------------------*/
-struct sr_if *if_ip_search(struct sr_if *iface, uint32_t ip);
+struct sr_if *if_ip_search(struct sr_if *iface, uint32_t ip)
+{
+    asser(iface);
+    while(iface && (ip != iface->ip))
+        iface = iface->next;
+    
+    if (iface) return iface;
+    
+    return NULL;
+}
 
-
+/*--------------------------------------------------------------------- 
+ * Method: arp_cache_lookup
+ *
+ *---------------------------------------------------------------------*/
+static struct arpc_entry *arp_cache_lookup( struct arpc_entry *entry, uint32_t ip)
+{
+    assert(entry);
+    while( entry && (ip != entry->arpc_ip) )
+        entry = entry->next;
+    
+    if (entry) return entry;
+    
+    return NULL;
+}
 
 /*--------------------------------------------------------------------- 
  * Method: encapsulate( ... )
@@ -169,8 +185,11 @@ struct sr_if *if_ip_search(struct sr_if *iface, uint32_t ip);
  * Method: rt_match
  *
  *---------------------------------------------------------------------*/
-static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr); 
-
+static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr)
+{
+    assert(addr);
+    struct sr_rt *current_rt, *default_rt, *best_rt;
+}
 
 
 
@@ -217,11 +236,67 @@ static void icmp_create(struct ip *ip_header, struct icmp_hdr *icmp_header,
 }
 
 /*--------------------------------------------------------------------- 
- * Method:
+ * Method: arp_cache_update;
+ *
+ *---------------------------------------------------------------------*/
+static void arp_cache_update(struct arpc_entry *entry, unsigned char *mac)
+{
+    assert(entry);
+    assert(mac);
+    time_t t;
+    
+    memcpy(entry->arpc_mac, mac, ETHER_ADDR_LEN);
+    entry->arpc_timeout = time(t) + ARPCACHE_TIMEOUT;
+    
+    return;
+}
+
+/*--------------------------------------------------------------------- 
+ * Method: arp_cache_add;
+ *
+ *---------------------------------------------------------------------*/
+static struct *arpc_entry arp_cache_add(struct arp_cache *cache, unsigned char *mac, uint32_t ip)
+{
+    assert(cache);
+    assert(mac);
+    time_t t;
+    
+    struct arpc_entry *entry;
+    if(entry = (struct arpc_entry*) malloc(sizeof(struct arpc_entry)))
+    {
+        memcpy(entry->arpc_mac, mac, ETHER_ADDR_LEN);
+        entry->arpc_ip = ip;
+        entry->arpc_timeout = time(t) + ARPCACHE_TIMEOUT;
+        
+        entry->next = NULL;
+        entry->prev = cache->last;
+        
+        if (!cache->first) cache->first = entry;
+        else cache->last->next = entry;
+        cache->last = entry;
+    }
+    return entry;
+}
+
+/*--------------------------------------------------------------------- 
+ * Method: arp_queue_lookup;
  *
  *---------------------------------------------------------------------*/
 
+/*--------------------------------------------------------------------- 
+ * Method: arpq_entry_clear;
+ *
+ *---------------------------------------------------------------------*/
 
+/*--------------------------------------------------------------------- 
+ * Method: arp_reply_fill;
+ *
+ *---------------------------------------------------------------------*/
+
+/*--------------------------------------------------------------------- 
+ * Method: sr_send_packet;
+ *
+ *---------------------------------------------------------------------*/
 
 
 
@@ -319,27 +394,49 @@ void sr_handlepacket(struct sr_instance* sr,
                 }
             }
     }
+    
+    
+    
+    
+    
+    
+    
     else if ( (struct sr_ethernet_hdr *)packet)->ether_type == ETHERTYPE_ARP){
-        struct sr_arphdr *recv_header = (struct sr_arphdr *) recv_datagram;
-        is_it_for_us();
-        if( recv_->recv_header == ARP_REQUEST ) {
-            // branch for requests
-            // is it for us? if so:
-            generate_arp(sr, send_datagram, ARP_REPLY);
-            return_to_sender(dest_mac, recv_frame);
-            // else drop it
+        
+        struct sr_arphdr *arp_header = (struct sr_arphdr*) recv_datagram;
+        if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_IP)
+            return;
+        
+        uint8_t in_cache = 0;
+        
+        struct arpc_entry arpc_ent;
+        if( arpc_ent = arp_cache_lookup(sr_arp_cache.first, arp_header->ar_sip) )
+        {
+            arp_cache_update(arpc_ent, arp_header->ar_sha);
+            in_cache = 1;
         }
         
-        else if ( recv_->recv_header == ARP_REPLY ){
-            // branch for replies
-            
-            // add it to the ARP cache
-            arpc_entry_add();
-            // the cache will be dealt with at the begining
+        struct sr_if *target_if;
+        if( target_if = if_dst_check(sr, arp_header->ar_tip) )
+        {
+            if( !in_cache ) {
+                if( arp_cache_add() ) {
+                    struct arpq_entry *new_ent;
+                    if( new_ent = arp_queue_lookup() )
+                        arpq_entry_clear;
+                }
+            }
+            else perror("ARP request not added to cache");
         }
         
-        else send_datagram = NULL;
+        if( ntohs(arp_header->ar_op == ARP_REQUEST) )
+        {
+            arp_reply_fill;
+            sr_send_packet;
+        }
     }
+
+    
         
     else perror("Unknown protocol");
         
