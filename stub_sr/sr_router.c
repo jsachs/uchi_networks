@@ -276,10 +276,9 @@ static void arp_cache_update(struct arpc_entry *entry, unsigned char *mac)
 {
     assert(entry);
     assert(mac);
-    time_t t;
     
     memcpy(entry->arpc_mac, mac, ETHER_ADDR_LEN);
-    entry->arpc_timeout = time(t) + ARP_CACHE_TIMEOUT;
+    entry->arpc_timeout = time(NULL) + ARP_CACHE_TIMEOUT;
     
     return;
 }
@@ -292,14 +291,13 @@ static struct arpc_entry *arp_cache_add(struct arp_cache *cache, unsigned char *
 {
     assert(cache);
     assert(mac);
-    time_t t;
     
     struct arpc_entry *entry;
-    if(entry = (struct arpc_entry*) malloc(sizeof(struct arpc_entry)))
+    if( entry = ((struct arpc_entry*) malloc(sizeof(struct arpc_entry))) )
     {
         memcpy(entry->arpc_mac, mac, ETHER_ADDR_LEN);
         entry->arpc_ip = ip;
-        entry->arpc_timeout = time(t) + ARP_CACHE_TIMEOUT;
+        entry->arpc_timeout = time(NULL) + ARP_CACHE_TIMEOUT;
         
         entry->next = NULL;
         entry->prev = cache->last;
@@ -327,14 +325,14 @@ static void arpq_entry_clear(struct sr_instance *sr,
     
     struct queued_packet *qpacket;
     
-    while( qpacket = (entry->arpq_packets).first )
+    while( qpacket = ((entry->arpq_packets).first) )
     {
         memcpy(( (struct sr_ethernet_hdr *) qpacket->packet)->ether_shost, (entry->arpq_if)->addr, ETHER_ADDR_LEN);
         memcpy(( (struct sr_ethernet_hdr *) qpacket->packet)->ether_dhost, d_ha, ETHER_ADDR_LEN);
         
         struct ip *s_ip = (struct ip *) ( qpacket->packet + sizeof(struct sr_ethernet_hdr));
         s_ip->ip_sum = 0;
-        s_ip->ip_sum = compute_ip_checksum( (uint16_t *) s_ip, s_ip->ip_hl * WORD_SIZE);
+        s_ip->ip_sum = compute_checksum( (uint16_t *) s_ip, s_ip->ip_hl * WORD_SIZE);
         
         if( !((entry->arpq_packets).first = qpacket->next) )
             (entry->arpq_packets).last = NULL;
@@ -588,7 +586,7 @@ void sr_handlepacket(struct sr_instance* sr,
         recv_hdr = (struct ip *)recv_datagram;
         
         /* Are we the destination? */
-        if (iface = if_dst_check(sr, recv_hdr->ip_dst)){  
+        if (iface = if_dst_check(sr, (uint32_t) (recv_hdr->ip_dst).s_addr)){  
             /* Is this an ICMP packet? */
             if (ntohl(recv_hdr->ip_p) == IPPROTO_ICMP)
                 //check whether it's an echo request, then:
@@ -609,10 +607,10 @@ void sr_handlepacket(struct sr_instance* sr,
                 //send_datagram is just a copy of recv_datagram with header updated; call to routing table lookup and checksum will be in this function
                 //also sets iface
                 update_ip_hdr(sr, recv_datagram, send_datagram, iface); 
-                incache = arp_cache_lookup(sr, send_datagram, dest_mac); //fills in dest_mac with correct MAC and returns 1 if found, otherwise return 0
+                incache = arp_cache_lookup(sr_arp_cache.first, (uint32_t)((((struct ip *)send_datagram)->ip_dst).s_addr)); //fills in dest_mac with correct MAC and returns 1 if found, otherwise return 0
                 if (!incache){
                     /* put COPY of datagram in queue */
-                    add_to_queue(sr, send_datagram);
+                    arp_queue_add(sr, send_datagram);
                     
                     /* make ARP request */
                     generate_arp(sr, send_datagram, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram
@@ -630,7 +628,7 @@ void sr_handlepacket(struct sr_instance* sr,
         
         uint8_t in_cache = 0;
         
-        struct arpc_entry arpc_ent;
+        struct arpc_entry *arpc_ent;
         if( arpc_ent = arp_cache_lookup(sr_arp_cache.first, arp_header->ar_sip) )
         {
             arp_cache_update(arpc_ent, arp_header->ar_sha);
