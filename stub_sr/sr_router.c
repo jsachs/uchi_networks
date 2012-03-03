@@ -208,7 +208,15 @@ static struct arpq_entry *arp_queue_lookup(struct arpq_entry *entry, uint32_t ip
  * Method: encapsulate( ... )
  *
  *---------------------------------------------------------------------*/
-
+void encapsulate(struct sr_if *iface, uint16_t prot, void *send_frame, void *send_datagram, size_t gram_size, uint8_t dest_mac[ETHER_ADDR_LEN]){
+    send_frame = calloc(gram_size + sizeof(struct sr_ethernet_hdr), sizeof(char));
+    struct sr_ethernet_hdr *ether_header = (struct sr_ethernet_hdr *)send_frame;
+    memcpy(ether_header->ether_shost, iface->addr, ETHER_ADDR_LEN * sizeof(uint8_t));
+    memcpy(ether_header->ether_dhost, dest_mac, ETHER_ADDR_LEN * sizeof(uint8_t));
+    ether_header->ether_type = prot;
+    memcpy(send_frame + sizeof(struct sr_ethernet_hdr), send_datagram, gram_size);
+    return;
+}
 
 
 
@@ -384,7 +392,6 @@ static void arp_create_reply(struct sr_ethernet_hdr *en_header, struct sr_arphdr
  * 
  * This method fills in the IP header on send_datagram based on the 
  * parameters given.
- * Is there a reason we need iface? I don't think so...
  *--------------------------------------------------------------------*/
 void update_ip_hdr(struct sr_instance *sr, void *recv_datagram, void *send_datagram, struct sr_if *iface){
     assert(recv_datagram);
@@ -394,6 +401,8 @@ void update_ip_hdr(struct sr_instance *sr, void *recv_datagram, void *send_datag
     send_datagram = malloc(ip_len);
     struct ip *send_header = (struct ip *)send_datagram;
     memcpy(send_datagram, recv_datagram, ip_len);
+    
+    //also needs to do routing table lookup and set iface
     
     //update TTL and checksum
     send_header->ip_ttl--;
@@ -552,8 +561,9 @@ void sr_handlepacket(struct sr_instance* sr,
     printf("*** -> Received packet of length %d \n",len);
     
     struct sr_ethernet_hdr *recv_frame = (struct sr_ethernet_hdr *)packet;
-    struct sr_ethernet_hdr *send_frame;
+    void *send_frame;
     uint8_t dest_mac[ETHER_ADDR_LEN];
+    uint16_t ether_prot = ETHERTYPE_IP;
     void *recv_datagram;    //a pointer to the incoming IP datagram/ARP packet, may or may not need its own memory
     void *send_datagram;    //a pointer to the outgoing IP datagram/ARP packet, gets its own memory
     struct sr_if *iface;
@@ -585,7 +595,7 @@ void sr_handlepacket(struct sr_instance* sr,
                 generate_icmp_echo(sr, recv_datagram, send_datagram); 
             else generate_icmp_error(sr, recv_datagram, send_datagram, DEST_UNREACH, PORT_UNREACH);
             //we're just returning to sender, so just use src mac
-            memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t)); //fill in dest_mac with src from recv_frame, 
+            memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t)); //fill in dest_mac with src from recv_frame,
         }
         else {
             /* Has it timed out? */
@@ -607,6 +617,7 @@ void sr_handlepacket(struct sr_instance* sr,
                     /* make ARP request */
                     generate_arp(sr, send_datagram, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram
                     memset(dest_mac, 0xFF, ETHER_ADDR_LEN); //set dest mac to broadcast address
+                    ether_prot = ETHERTYPE_ARP;
                 }
             }
         }
@@ -641,7 +652,7 @@ void sr_handlepacket(struct sr_instance* sr,
         if( ntohs(arp_header->ar_op == ARP_REQUEST) )
         {
             arp_create_reply;
-            //sr_send_packet;
+            ether_prot = ETHERTYPE_ARP;
         }
     }
 
@@ -651,7 +662,12 @@ void sr_handlepacket(struct sr_instance* sr,
         
     //encapsulate and send datagram, if appropriate
     if (send_datagram != NULL) {
-        encapsulate(send_frame, send_datagram, dest_mac);
+        size_t datagram_size;
+        if (ether_prot == ETHERTYPE_IP)
+            datagram_size = ((struct ip *)send_datagram)->ip_len;
+        else
+            datagram_size = sizeof(sr_arphdr);
+        encapsulate(iface, ether_prot, send_frame, send_datagram, datagram_size, dest_mac);
         sr_send_packet(sr, (uint8_t *)send_frame, sizeof(send_frame), (char *) iface);
     }
     
