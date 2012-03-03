@@ -201,11 +201,11 @@ static void icmp_create(struct ip *ip_header, struct icmp_hdr *icmp_header,
     ip_header->ip_off = 0;
     ip_header->ip_ttl = 64;
     ip_header->ip_p = IPPROTO_ICMP;
-    ip_header->ip_len - htons(iphdr->ip_hl * WORD_BYTELEN + ICMPHDR_LEN + icmpdat_len);
+    ip_header->ip_len - htons(iphdr->ip_hl * WORD_SIZE + ICMPHDR_LEN + icmpdat_len);
     (ip_header->ip_src).s_addr = s_ip;
     (ip_header->ip_dst).s_addr = d_ip;
     ip_header->ip_sum = 0;
-    ip_header->ip_sum = compute_ip_checksum((uint16_t*) iphdr, iphdr->ip_hl * WORD_BYTELEN);
+    ip_header->ip_sum = compute_ip_checksum((uint16_t*) iphdr, iphdr->ip_hl * WORD_SIZE);
     
     icmp_header->icmp_type = type;
     icmp_header->icmp_code = code;
@@ -216,17 +216,138 @@ static void icmp_create(struct ip *ip_header, struct icmp_hdr *icmp_header,
     icmphdr->icmp_sum = compute_ip_checksum((uint16_t*) icmphdr, ICMPHDR_LEN + icmp_data_len);
 }
 
+/*---------------------------------------------------------------------
+ * Method: update_ip_hdr(struct sr_instance *sr, void *recv_datagram,
+ *                          void *send_datagram, struct sr_iface *iface)
+ * Scope: Local
+ * 
+ * This method fills in the IP header on send_datagram based on the 
+ * parameters given.
+ * Is there a reason we need iface? I don't think so...
+ *--------------------------------------------------------------------*/
+void update_ip_hdr(struct sr_instance *sr, void *recv_datagram, void *send_datagram, struct sr_iface *iface){
+    assert(recv_datagram);
+    struct ip *recv_header = (struct ip *)recv_datagram;
+    size_t ip_len = ntohs(recv_header->ip_len) * WORD_SIZE;
+    send_datagram = malloc(ip_len);
+    struct ip *send_header = (struct ip *)send_datagram;
+    memcpy(send_datagram, recv_datagram, ip_len);
+    
+    //update TTL and checksum
+    send_header->ip_ttl--;
+    send_header->ip_sum = 0;
+    send_header->ip_sum = compute_ip_checksum((uint16_t*) send_datagram, ip_len);
+    
+    return;
+}
+
+/*---------------------------------------------------------------------
+ * Method: ip_header_create(struct sr_instance *sr, void *send_datagram,
+ *                          struct in_addr dst, struct in_addr src, 
+ *                          size_t length)
+ * Scope: Local
+ * 
+ * This method fills in the IP header on send_datagram based on the 
+ * parameters given.
+ *--------------------------------------------------------------------*/
+
+void ip_header_create(struct sr_instance *sr, void *send_datagram, struct in_addr dst, struct in_addr src, size_t length){
+    assert(send_datagram);
+    
+    struct ip *ip_header = (struct ip *)send_datagram;
+    
+    ip_header->ip_v = 4;
+    ip_header->ip_hl = 5;
+    ip_header->ip_tos = 0;
+    ip_header->ip_id = 0;
+    ip_header->ip_off = 0;
+    ip_header->ip_ttl = 64;
+    ip_header->ip_p = IPPROTO_ICMP;
+    ip_header->ip_len = length;
+    ip_header->ip_src = s_ip;
+    ip_header->ip_dst = d_ip;
+    ip_header->ip_sum = 0;
+    ip_header->ip_sum = compute_ip_checksum((uint16_t*) iphdr, iphdr->ip_hl * WORD_SIZE);
+    return;
+}
+
 /*--------------------------------------------------------------------- 
- * Method:
+ * Method: generate_icmp_echo(struct sr_instance *sr, void *recv_datagram, 
+ *                       void *send_datagram, int ICMPtype, int ICMPcode)
+ * Scope: Local
  *
+ * This method takes an IP datagram containing an ICMP echo request
+ * as an argument and returns an ICMP echo reply.
  *---------------------------------------------------------------------*/
 
+void generate_icmp_echo(struct sr_instance *sr, void *recv_datagram, void *send_datagram){
+    assert(recv_datagram)
+    
+    /* need to get pointers to various things */
+    struct ip *recv_header = (struct ip *)recv_datagram;
+    struct in_addr ip_dst, ip_src;
+    ip_dst.s_addr = recv_header->ip_src->s_addr;
+    ip_src.s_addr = recv_header->ip_dst->s_addr;
+    
+    /* get some useful info about lengths */
+    size_t ip_length = ntohs(recv_header->ip_len) * WORD_SIZE;
+    size_t icmp_length = ip_length - sizeof(struct ip);
+    
+    /* actually create new packet */
+    send_datagram = malloc(ip_len);
+    struct ip *send_header = (struct ip *)send_datagram;
+    memcpy(send_datagram, recv_datagram, ip_len);
+    struct icmp_hdr *icmp_header = (struct icmp_hdr *)(send_datagram + sizeof(struct ip));
+    
+    assert(icmp_header);
+    
+    icmp_header->icmp_type = 0;
+    icmp_header->checksum = 0;
+    compute_icmp_checksum(icmp_header, icmp_length);
+    ip_header_create(sr, send_datagram, ip_dst, ip_length); //this function only create headers for ICMP packets 
+    return;
+    
+}
 
+/*---------------------------------------------------------------------
+ * Method: generate_icmp_error(struct sr_instance *sr, 
+ *                             void *recv_datagram, void *send_datagram, 
+ *                             uint16_t type, uint16_t code)
+ * Scope: Local
+ * This method takes an IP datagram and generates an ICMP error message
+ * for it according to the given type and code.
+ *---------------------------------------------------------------------*/
 
-
-
-
-
+void generate_icmp_error(struct sr_instance *sr, void *recv_datagram, void *send_datagram, uint16_t icmp_type, uint16_t icmp_code){
+    assert (recv_datagram);
+    
+    /* need to get pointers to various things */
+    struct ip *recv_header = (struct ip *)recv_datagram;
+    struct in_addr ip_dst;
+    ip_dst.s_addr = recv_header->ip_src->s_addr;
+    ip_src.s_addr = recv_header->ip_dst->s_addr;
+    
+    /* get some useful info about lengths */
+    size_t ip_len = ntohs(recv_header->ip_len) * WORD_SIZE;
+    size_t icmp_data_len = sizeof(struct ip) + 2 * sizeof(uint32_t);
+    
+    /* packet includes IP header, ICMP header, and beginning of original packet */
+    send_datagram = malloc(sizeof(struct ip) + sizeof(struct icmp_hdr) + icmp_data_len);  
+    struct ip *send_header = (struct ip *)send_datagram;
+    struct icmp_hdr *icmp_header = (struct icmp_hdr *)(send_datagram + sizeof(struct ip));
+    void *icmp_data = icmp_header + sizeof(icmp_hdr);
+    
+    assert(icmp_header);
+    assert (icmp_data);
+    
+    icmp_header->type = icmp_type;
+    icmp_header->code = icmp_code;
+    memcpy(icmp_data, recv_datagram, icmp_data_len);
+    compute_icmp_checksum(icmp_header, sizeof(struct icmp_hdr) + icmp_data_len);
+    ip_header_create(sr, send_datagram, sizeof(struct ip) + sizeof(struct icmp_header) + icmp_data_len);
+    return; 
+    
+}
 
 /*---------------------------------------------------------------------
  * Method: sr_handlepacket(uint8_t* p,char* interface)
@@ -265,7 +386,7 @@ void sr_handlepacket(struct sr_instance* sr,
     void *send_datagram;    //a pointer to the outgoing IP datagram/ARP packet, gets its own memory
     struct sr_if *iface;
     
-    strip_ether_header(packet, recv_datagram); //Not really going to be a helper function, just pointer arithmetic
+    recv_datagram = packet + sizeof(struct sr_ethernet_hdr);
     
     /* First, deal with ARP cache and queue timeouts
      * Which I will totally do when I have those data structures
@@ -286,20 +407,20 @@ void sr_handlepacket(struct sr_instance* sr,
         recv_hdr = (struct ip *)recv_datagram;
         
         /* Are we the destination? */
-        if (iface = if_dst_check(sr, recv_hdr->ip_dst)){    //I'm assuming we're storing things in instance in host byte order
+        if (iface = if_dst_check(sr, recv_hdr->ip_dst)){  
             /* Is this an ICMP packet? */
             if (ntohl(recv_hdr->ip_p) == IPPROTO_ICMP)
                 //check whether it's an echo request, then:
-                generate_icmp(sr, recv_datagram, send_datagram, ECHO_REPLY, ECHO_REPLY); //return echo reply encapsulated in IP header if it was an ICMP echo request, otherwise return NULL pointer in send_datagram. Not 100% sure we'll need sr, but probably
-            else generate_icmp(sr, recv_datagram, send_datagram, DEST_UNREACH, PORT_UNREACH);    //return appropriate error message encapsulated in IP header. DEST_UNREACH is the type, PORT_UNREACH the code.
+                generate_icmp_echo(sr, recv_datagram, send_datagram); 
+            else generate_icmp_error(sr, recv_datagram, send_datagram, DEST_UNREACH, PORT_UNREACH);
             //we're just returning to sender, so just use src mac
-            return_to_sender(dest_mac, recv_frame); //fill in dest_mac with src from recv_frame, probably not a helper
+            memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t)); //fill in dest_mac with src from recv_frame, 
         }
         else {
             /* Has it timed out? */
             if (ntohl(recv_datagram->ip_ttl) <= 0){
-                generate_icmp(sr, recv_datagram, send_datagram, TIME_EXCEEDED, TIME_INTRANSIT);
-                return_to_sender(dest_mac, recv_frame);
+                generate_icmp_error(sr, recv_datagram, send_datagram, TIME_EXCEEDED, TIME_INTRANSIT);
+                memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t));
             }
             else {
                 /* update and forward packet; if necessary, add it to queue */
@@ -322,15 +443,15 @@ void sr_handlepacket(struct sr_instance* sr,
     else if ( (struct sr_ethernet_hdr *)packet)->ether_type == ETHERTYPE_ARP){
         struct sr_arphdr *recv_header = (struct sr_arphdr *) recv_datagram;
         is_it_for_us();
-        if( recv_->recv_header == ARP_REQUEST ) {
+        if( recv_header->ar_op == ARP_REQUEST ) {
             // branch for requests
             // is it for us? if so:
             generate_arp(sr, send_datagram, ARP_REPLY);
-            return_to_sender(dest_mac, recv_frame);
+            memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t));
             // else drop it
         }
         
-        else if ( recv_->recv_header == ARP_REPLY ){
+        else if ( recv_header->ar_op == ARP_REPLY ){
             // branch for replies
             
             // add it to the ARP cache
@@ -367,6 +488,9 @@ void sr_handlepacket(struct sr_instance* sr,
     
     
 }/* end sr_handlepacket */
+
+
+
 
 
 
