@@ -162,7 +162,7 @@ struct sr_if *if_ip_search(struct sr_if *iface, uint32_t ip)
  * Method: arp_cache_lookup
  *
  *---------------------------------------------------------------------*/
-static struct arpc_entry *arp_cache_lookup( struct arpc_entry *entry, uint32_t ip)
+static struct arpc_entry *arp_cache_lookup(struct arpc_entry *entry, uint32_t ip)
 {
     assert(entry);
     while( entry && (ip != entry->arpc_ip) )
@@ -172,6 +172,23 @@ static struct arpc_entry *arp_cache_lookup( struct arpc_entry *entry, uint32_t i
     
     return NULL;
 }
+
+/*--------------------------------------------------------------------- 
+ * Method: arp_queue_lookup;
+ *
+ *---------------------------------------------------------------------*/
+static struct arpq_entry *arp_queue_lookup(struct arpq_entry *entry, uint32_t ip)
+{
+    assert(entry);
+    while( entry && (ip != entry->arpq_ip) )
+        entry = entry->next;
+    
+    if (entry) return entry;
+    
+    return NULL;
+}
+
+
 
 /*--------------------------------------------------------------------- 
  * Method: encapsulate( ... )
@@ -185,14 +202,7 @@ static struct arpc_entry *arp_cache_lookup( struct arpc_entry *entry, uint32_t i
  * Method: rt_match
  *
  *---------------------------------------------------------------------*/
-static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr)
-{
-    assert(addr);
-    struct sr_rt *current_rt, *default_rt, *best_rt;
-}
-
-
-
+static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr);
 
 
 /*--------------------------------------------------------------------- 
@@ -279,19 +289,73 @@ static struct *arpc_entry arp_cache_add(struct arp_cache *cache, unsigned char *
 }
 
 /*--------------------------------------------------------------------- 
- * Method: arp_queue_lookup;
- *
- *---------------------------------------------------------------------*/
-
-/*--------------------------------------------------------------------- 
  * Method: arpq_entry_clear;
  *
  *---------------------------------------------------------------------*/
+static void arpq_entry_clear(struct sr_instance *sr,
+                             struct arp_queue *queue,
+                             struct arpq_entry *entry,
+                             unsigned char *d_ha)
+{
+    assert(sr);
+    assert(queue);
+    assert(entry);
+    assert(d_ha);
+    
+    struct queued_packet *qpacket;
+    
+    while( qpacket = (entry->arpq_packets).first )
+    {
+        memcpy(( (struct sr_ethernet_hdr *) qpacket->packet)->ether_shost, (entry->arpq_if)->addr, ETHER_ADDR_LEN);
+        memcpy(( (struct sr_ethernet_hdr *) qpacket->packet)->ether_dhost, d_ha, ETHER_ADDR_LEN);
+        
+        struct ip *s_ip = (struct ip *) ( qpacket->packet + sizeof(struct sr_ethernet_hdr));
+        s_ip->ip_sum = 0;
+        s_ip->ip_sum = compute_ip_checksum( (uint16_t *) s_ip, s_ip->ip_hl *WORD_BYTELEN);
+        
+        if( !((entry->arpq_packets).first = qpacket->next) )
+            (entry->arpq_packets).last = NULL;
+        
+        free(qpacket);
+    }
+    
+    if (entry->prev) (entry->prev)->next = entry->next;
+    else queue->first = entry->next;
+    
+    if (entry->next) (entry->next)->prev = entry->prev;
+    else queue->last = entry->prev;
+    
+    free(entry);
+    return;
+}
+
+
+
+
 
 /*--------------------------------------------------------------------- 
- * Method: arp_reply_fill;
+ * Method: arp_create_reply;
  *
  *---------------------------------------------------------------------*/
+static void arp_create_reply(struct sr_ethernet_hdr *en_header, struct sr_arphdr arp_header, struct sr_if *s_if)
+{
+    assert(en_header);
+    assert(arp_header);
+    assert(s_if);
+    
+    memcpy(en_header->ether_dhost, en_header->ether_shost, ETHER_ADDR_LEN);
+    memcpy(en_header->ether_shost, s_if->addr, ETHER_ADDR_LEN);
+           
+    memcpy(arp_header->ar_tha, arp_header->ar_sha, ETHER_ADDR_LEN);
+    memcpy(arp_header->ar_sha, s_if->addr, ETHER_ADDR_LEN);
+    arp_header->ar_tip = arp_header->ar_sip;
+    arp_header->ar_sip = s_if->ip;
+    arp_header->ar_op = htons(ARP_REPLY);
+    
+    return;
+}
+
+
 
 /*--------------------------------------------------------------------- 
  * Method: sr_send_packet;
@@ -431,7 +495,7 @@ void sr_handlepacket(struct sr_instance* sr,
         
         if( ntohs(arp_header->ar_op == ARP_REQUEST) )
         {
-            arp_reply_fill;
+            arp_create_reply;
             sr_send_packet;
         }
     }
