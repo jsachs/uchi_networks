@@ -112,6 +112,7 @@ void sr_init(struct sr_instance* sr)
     assert(sr);
 
     /* Add initialization code here! */
+    
     // initialize ARP cache
     // initialize ARP queue
 
