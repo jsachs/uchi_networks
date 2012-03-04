@@ -225,7 +225,48 @@ void encapsulate(struct sr_if *iface, uint16_t prot, void *send_frame, void *sen
  * Method: rt_match
  *
  *---------------------------------------------------------------------*/
-static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr);
+static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr)
+{
+    assert(sr);
+    assert(addr);
+    
+    struct sr_rt *rt_ent, *rt_def = NULL, *rt_best = NULL;
+    uint8_t *addr_b, *rt_b, *mask;
+    uint8_t match, mismatch = 0, count = 0, longest = 0;
+    
+    for( rt_ent = sr->routing_table; rt_ent; rt_ent = rt_ent->next )
+    {
+        if(!rt_def) {
+            if((rt_ent->dest).s_addr == 0)
+                rt_def = rt_ent;
+        }
+        
+        addr_b = addr;
+        rt_b = (uint8_t *) &((rt_ent->dest).s_addr);
+        mask = (uint8_t *) &((rt_ent->mask).s_addr);
+        
+        for(; addr_b < addr + WORDTOBYTE; addr_b++, rt_b++, mask++)
+        {
+            if (!(match = (*addr_b)&(*mask))) break;
+            
+            if(match != *rt_b) {
+                mismatch = 1;
+                break;
+            }
+            count += 1;
+        }
+        
+        if (mismatch) mismatch = 0;
+        
+        else if(count > longest) {
+            longest = count;
+            rt_best = rt_ent;
+        }
+        count = 0
+    }
+    if (rt_best) return rt_best;
+    return rt_def;
+}
 
 
 /*--------------------------------------------------------------------- 
@@ -640,9 +681,9 @@ void sr_handlepacket(struct sr_instance* sr,
         if( target_if = if_dst_check(sr, arp_header->ar_tip) )
         {
             if( !in_cache ) {
-                if( arp_cache_add() ) {
+                if( arp_cache_add(&sr_arpcache, arp_header->ar_sip, arp_header->ar_sha) ) {
                     struct arpq_entry *new_ent;
-                    if( new_ent = arp_queue_lookup() )
+                    if( new_ent = arp_queue_lookup(sr.arpqueue.first, arp_header->ar_sip) )
                         arpq_entry_clear;
                 }
             }
@@ -650,7 +691,8 @@ void sr_handlepacket(struct sr_instance* sr,
         }
         if( ntohs(arp_header->ar_op == ARP_REQUEST) )
         {
-            arp_create_reply;
+            arp_create_reply( (struct sr_ethernet_hdr *)packet, arp_header, target_if );
+            /* sr_send_packet ? */
             ether_prot = ETHERTYPE_ARP;
         }
     }
