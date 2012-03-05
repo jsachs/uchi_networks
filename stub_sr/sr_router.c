@@ -166,7 +166,7 @@ static struct sr_if *if_dst_check(struct sr_instance *sr, uint32_t ip)
 static struct sr_if *get_interface(struct sr_instance *sr, const char *if_name)
 {
     assert(sr);
-    assert(name);
+    assert(if_name);
     
     struct sr_if *iface = sr->if_list;
     
@@ -451,7 +451,7 @@ static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *
  *--------------------------------------------------------------------*/
 void update_arp_queue(struct sr_instance *sr, struct arp_queue *queue, struct arp_cache *cache){
     assert(queue);
-    struct arpq_entry *queue_entry = queue.first;
+    struct arpq_entry *queue_entry = queue->first;
     while (queue_entry){
         
         /* check whether there's a reply in the cache */
@@ -476,7 +476,7 @@ void update_arp_queue(struct sr_instance *sr, struct arp_queue *queue, struct ar
  * This method sends out every packet queued in the given entry to the MAC address specified in the cache
  *--------------------------------------------------------------------*/
 
-void send_queued_packets(struct sr_instance *sr, struct arpq_entry queue_entry, struct arpc_entry cache_entry){
+void send_queued_packets(struct sr_instance *sr, struct arpq_entry *queue_entry, struct arpc_entry cache_entry){
     
     void *send_frame;
     
