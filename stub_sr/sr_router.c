@@ -65,7 +65,7 @@ struct arpc_entry {
 struct queued_packet {
     uint8_t *packet;
     unsigned len;
-    char     icmp_if_name[10 /* change later */];
+    //char     icmp_if_name[10 /* change later */];
     struct   queued_packet *next;
 };
 
@@ -412,11 +412,11 @@ static void arp_create(struct sr_arphdr *arp_header, struct sr_if *s_if, uint32_
  * Method: arpq_add_packet
  *
  *---------------------------------------------------------------------*/
-static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, uint8_t *packet, unsigned p_len, char *if_name)
+static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, uint8_t *packet, unsigned p_len /*, char *if_name*/)
 {
     assert(entry);
     assert(packet);
-    assert(if_name);
+    //assert(if_name);
     
     struct queued_packet *new_packet;
     
@@ -425,7 +425,7 @@ static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, uint8_t *
         new_packet->packet = (uint8_t *)malloc(p_len);
         new_packet->len = p_len;
         
-        memcpy(new_packet->icmp_if_name, if_name, sr_IFACE_NAMELEN);
+        //memcpy(new_packet->icmp_if_name, if_name, sr_IFACE_NAMELEN);
         memcpy(new_packet->packet, packet, p_len);
         
         new_packet->next = NULL;
@@ -441,11 +441,11 @@ static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, uint8_t *
  * Method: arpq_add_entry
  *
  *---------------------------------------------------------------------*/
-static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *iface, char *icmp_if, uint8_t *packet, uint32_t ip, unsigned len)
+static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *iface, /* char *icmp_if, */uint8_t *packet, uint32_t ip, unsigned len)
 {
     assert(queue);
     assert(iface);
-    assert(icmp_if);
+    //assert(icmp_if);
     assert(packet);
     
     struct arpq_entry *new_entry;
@@ -457,7 +457,7 @@ static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *
         (new_entry->arpq_packets).first = NULL;
         (new_entry->arpq_packets).last = NULL;
         
-        if(arpq_add_packet(new_entry, packet, len, icmp_if))
+        if(arpq_add_packet(new_entry, packet, len /*, icmp_if*/))
         {
             new_entry->arpq_num_reqs = 1;
             new_entry->next = NULL;
@@ -708,10 +708,15 @@ void sr_handlepacket(struct sr_instance* sr,
                 update_ip_hdr(sr, recv_datagram, send_datagram, iface); 
 
                 incache = arp_cache_lookup(sr_arp_cache.first, send_ip);
-                //fills in dest_mac with correct MAC and returns 1 if found, otherwise return 0 (still giving a pointer error TODO)
+                
+                
                 if (!incache){
-                    /* put COPY of datagram in queue */
-                    arpq_add_packet(sr, send_datagram, sizeof(send_datagram), iface);
+                    
+                    if (arp_queue_lookup(sr_arp_queue.first, send_ip)){ //if we've already sent an ARP request about this IP
+                        arpq_add_entry(&sr_arp_queue, iface, (uint8_t *)send_datagram, send_ip, ntohs(recv_hdr->ip_len)); 
+                    }
+                    else arpq_add_packet(sr_arp_queue.first, (uint8_t *)send_datagram, ntohs (recv_hdr->ip_len));
+                
                     free(send_datagram);
                     
                     /* make ARP request */
