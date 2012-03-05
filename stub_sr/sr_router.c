@@ -463,9 +463,25 @@ void send_queued_packets(struct sr_instance *sr, struct arpq_entry *queue_entry,
     }
 }
 
+/*---------------------------------------------------------------------
+ * Method: void send_queued_errors(struct sr_instance *sr, struct arpq_entry *queue_entry)
+ *
+ * sends ICMP host unreachable message in response to every packet in entry
+ *---------------------------------------------------------------------*/
+void send_queued_errors(struct sr_instance *sr, struct arpq_entry *queue_entry){
+    struct queued_packet *packet = (queue_entry->packetq).first;
+    //AGH we need to include MAC address in queued_packet struct.
+    void *to_send;
+    while (packet){
+        generate_icmp_error(sr, packet->packet, to_send, DEST_UNREACH, HOST_UNREACH);
+        //encapsulate(
+        //sr_send_packet(
+        //free(to_send
+    }
+}
 
 /*--------------------------------------------------------------------- 
- * Method: void update_arp_queue(struct sr_instance *sr, struct arpq_entry *queue_entry, struct arp_cache *cache) 
+ * Method: void update_arp_queue(struct sr_instance *sr, struct arp_queue *queue, struct arp_cache *cache) 
  * 
  * time to deal with the queue
  *
@@ -495,7 +511,8 @@ void update_arp_queue(struct sr_instance *sr, struct arp_queue *queue, struct ar
         else if (time(NULL) - queue_entry->arpq_last_req > ARP_REQUEST_TIMEOUT){
            /* deal with timeouts */
             if (queue_entry->arpq_num_reqs >= ARP_MAX_REQ){
-                /*clear out queue, send ICMP error messages */
+                send_queued_errors(sr, queue_entry);
+                arpq_entry_clear(sr, queue, queue_entry, cache_entry->arpc_mac);
             }
             else {
                 /* send out another ARP request */
