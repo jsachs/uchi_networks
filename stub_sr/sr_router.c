@@ -212,7 +212,7 @@ void encapsulate(struct sr_if *iface, uint16_t prot, void *send_frame, void *sen
     struct sr_ethernet_hdr *ether_header = (struct sr_ethernet_hdr *)send_frame;
     memcpy(ether_header->ether_shost, iface->addr, ETHER_ADDR_LEN * sizeof(uint8_t));
     memcpy(ether_header->ether_dhost, dest_mac, ETHER_ADDR_LEN * sizeof(uint8_t));
-    ether_header->ether_type = prot;
+    ether_header->ether_type = htons(prot);
     memcpy(send_frame + sizeof(struct sr_ethernet_hdr), send_datagram, gram_size);
     return;
 }
@@ -434,11 +434,66 @@ static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *
 }
 
 /*--------------------------------------------------------------------- 
- * Method: sr_send_packet;
+ * Method: void update_arp_queue(struct sr_instance *sr, struct arpq_entry *queue_entry, struct arp_cache *cache) 
+ * 
+ * time to deal with the queue
  *
- *---------------------------------------------------------------------*/
+ * 1) iterate through the queue
+ *
+ * 2) check whether there is now a reply in the ARP cache, and send everything for that entry if there is
+ *
+ * 3) if not, check whether stuff in the queue has timed out
+ *  - if it has, max retrys?
+ *  - clear it out if it has, set retry++ if we haven't, send another ARP request
+ *  - if we clear it out, we need to send an ICMP time exceeded message
+ *
+ * 4) if it hasn't timed out, just ignore it
+ *--------------------------------------------------------------------*/
+void update_arp_queue(struct sr_instance *sr, struct arp_queue *queue, struct arp_cache *cache){
+    assert(queue);
+    struct arpq_entry *queue_entry = queue.first;
+    while (queue_entry){
+        
+        /* check whether there's a reply in the cache */
+        struct arpc_entry *cache_entry;
+        if (cache_entry = arp_cache_lookup(cache->first, queue_entry->arpq_ip)){
+            /* send everything in the packet queue */
+            send_queued_packets(sr, queue_entry, cache_entry);
+            arpq_entry_clear(sr, queue, queue_entry, cache_entry->arpc_mac);
+        }
+        else{
+           
+        }
+        entry = entry->next;
+    }
+}
 
+/*---------------------------------------------------------------------
+ * Method: void send_queued_packets(struct sr_instance *sr, struct arpq_entry queue_entry, struct arpq_entry cache_entry)
+ *
+ * Scope: Local
+ *
+ * This method sends out every packet queued in the given entry to the MAC address specified in the cache
+ *--------------------------------------------------------------------*/
 
+void send_queued_packets(struct sr_instance *sr, struct arpq_entry queue_entry, struct arpc_entry cache_entry){
+    
+    void *send_frame;
+    
+    struct sr_if *iface = queue_entry->arpq_if;
+    
+    uint8_t dest_mac[ETHER_ADDR_LEN];
+    memcpy(dest_mac, arpc_mac, ETHER_ADDR_LEN);
+    
+    void *packet = (queue_entry->arpq_packets).first;
+    
+    while (packet){
+        encapsulate(iface, ETHERTYPE_IP, send_frame, packet->packet, packet->len, dest_mac);
+        sr_send_packet(sr, (uint8_t *)send_frame, sizeof(send_frame), iface);
+        free(send_frame);
+        packet = packet->next;
+    }
+}
 
 
 /*---------------------------------------------------------------------
@@ -743,6 +798,7 @@ void sr_handlepacket(struct sr_instance* sr,
         sr_send_packet(sr, (uint8_t *)send_frame, sizeof(send_frame), (char *) iface);
     }
     
+    update_arp_queue(sr, &sr_arp_queue, &sr_arp_cache); 
     
     // time to deal with the queue
     /*
