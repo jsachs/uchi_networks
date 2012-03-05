@@ -394,23 +394,23 @@ static void arpq_entry_clear(struct sr_instance *sr,
 
 
 /*--------------------------------------------------------------------- 
- * Method: arp_create_reply;
+ * Method: arp_create;
  *
  *---------------------------------------------------------------------*/
-static void arp_create_reply(struct sr_ethernet_hdr *en_header, struct sr_arphdr *arp_header, struct sr_if *s_if)
+static void arp_create(struct sr_arphdr *arp_header, struct sr_if *s_if, uint32_t ip, unsigned short op)
 {
-    assert(en_header);
     assert(arp_header);
     assert(s_if);
     
-    memcpy(en_header->ether_dhost, en_header->ether_shost, ETHER_ADDR_LEN);
-    memcpy(en_header->ether_shost, s_if->addr, ETHER_ADDR_LEN);
-           
-    memcpy(arp_header->ar_tha, arp_header->ar_sha, ETHER_ADDR_LEN);
+    arp_header->ar_hrd = htons(1);
+    arp_header->ar_pro = htons(ETHERTYPE_IP);
+    arp_header->ar_hln = htons(ETHER_ADDR_LEN);
+    arp_header->ar_pln = htons(4);
+    memcpy(arp_header->ar_tha, arp_header->ar_sha, ETHER_ADDR_LEN); //this will give nonsense for an arp request which is fine 
     memcpy(arp_header->ar_sha, s_if->addr, ETHER_ADDR_LEN);
-    arp_header->ar_tip = arp_header->ar_sip;
+    arp_header->ar_tip = ip; //this should be passed as an argument
     arp_header->ar_sip = s_if->ip;
-    arp_header->ar_op = htons(ARP_REPLY);
+    arp_header->ar_op = htons(op);
     
     return;
 }
@@ -644,18 +644,21 @@ void sr_handlepacket(struct sr_instance* sr,
                 memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t));
             }
             else {
+                uint32_t send_ip = (recv_hdr->ip_dst).s_addr;
                 /* update and forward packet; if necessary, add it to queue */
                 struct arpc_entry *incache;
                 //send_datagram is just a copy of recv_datagram with header updated; call to routing table lookup and checksum will be in this function
                 //also sets iface
                 update_ip_hdr(sr, recv_datagram, send_datagram, iface); 
-                incache = arp_cache_lookup(sr_arp_cache.first, (uint32_t)((((struct ip *)send_datagram)->ip_dst).s_addr));
+                incache = arp_cache_lookup(sr_arp_cache.first, send_ip);
                 if (!incache){
                     /* put COPY of datagram in queue */
                     arp_queue_add(sr, send_datagram); //still need to write this
+                    free(send_datagram);
                     
                     /* make ARP request */
-                    generate_arp(sr, send_datagram, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram--still need to write this
+                    send_datagram = malloc(sizeof(struct sr_arphdr));
+                    arp_create((struct sr_arphdr *)send_datagram, iface, send_ip, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram--still need to write this
                     memset(dest_mac, 0xFF, ETHER_ADDR_LEN); //set dest mac to broadcast address
                     ether_prot = ETHERTYPE_ARP;
                 }
@@ -694,7 +697,7 @@ void sr_handlepacket(struct sr_instance* sr,
         }
         if( ntohs(arp_header->ar_op == ARP_REQUEST) )
         {
-            arp_create_reply( (struct sr_ethernet_hdr *)packet, arp_header, target_if );
+            arp_create( arp_header, target_if, arp_header->ar_sip, ARP_REPLY);
             /* sr_send_packet ? */
             ether_prot = ETHERTYPE_ARP;
         }
