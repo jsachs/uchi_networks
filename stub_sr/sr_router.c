@@ -434,6 +434,70 @@ static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *
     return NULL;
 }
 
+/*--------------------------------------------------------------------- 
+ * Method: arp_queue_flush
+ *
+ *---------------------------------------------------------------------*/
+static void arp_queue_flush(struct arp_queue *queue)
+{
+    assert(queue);
+    struct arpq_entry *entry = queue->first;
+    struct arpq_entry *temp = NULL;
+    
+    while(entry) {
+        if( time() - 1 > entry->arpq_last_req)
+        {
+            if(entry->arpq_num_reqs >= ARP_MAX_REQ) {
+                temp = entry;
+                arpq_packets_icmpsend(sr, &entry->arpq_packet); //TODO, this function does not exist
+            }
+            else if(arpreq_send()) //TODO, function to do a generic send
+                fprintf(stderr, "Packet send failed (ARP req)\n");
+        }
+        entry = entry->next;
+        if(temp)
+        {
+            if (temp->prev) (temp->prev)->next = temp->next;
+            else queue->first = temp->next;
+            
+            if (temp->next) (temp->next)->prev = temp->prev;
+            else queue->last = temp->prev;
+            
+            free(temp);
+            temp = NULL;
+        }
+    }
+}
+
+/*--------------------------------------------------------------------- 
+ * Method: arp_cache_flush
+ *
+ *---------------------------------------------------------------------*/
+static void arp_cache_flush(struct arp_cache *cache)
+{
+    assert(cache);
+    
+    struct arpc_entry *entry = cache->first;
+    struct arpc_entry *temp = NULL;
+    
+    while(entry) {
+        if( time() > entry->arpc_timeout)
+        {
+            if (entry->prev) (entry->prev)->next = entry->next;
+            else cache->first = entry->next;
+            
+            if (entry->next) (entry->next)->prev = entry->prev;
+            else cache->last = entry->prev;
+            
+            temp = entry;
+        }
+        entry = entry->next;
+        if(temp) {
+            free(temp);
+            temp = NULL;
+        }
+    }
+}
 
 /*---------------------------------------------------------------------
  * Method: void send_queued_packets(struct sr_instance *sr, struct arpq_entry *queue_entry, struct arpc_entry 
@@ -715,9 +779,24 @@ void sr_handlepacket(struct sr_instance* sr,
     if ( recv_frame->ether_type == ETHERTYPE_IP){
         
         /* Strip ethernet header off of packet */
-        struct ip *recv_hdr;
+        struct ip *recv_hdr = (struct ip *)recv_datagram;
+        size_t ip_header_len = recv_datagram->ip_hl * WORD_SIZE;
         
-        recv_hdr = (struct ip *)recv_datagram;
+        /* Check the checksum */
+        if( compute_checksum( (uint16_t *) recv_datagram, ip_header_len) != recv_datagram->ip_sum ) {
+            fprintf(stderr, "IP checksum incorrect, packet was dropped\n");
+            return;
+        }
+        
+        /* Check the TTL */
+        if( (recv_datagram->ip_ttl -= 1) == 0) 
+        {
+            if (recv_datagram->ip_p == IPPROTO_ICMP) {
+                struct icmp_hdr *icmp_header = (struct icmp_hdr*) (packet + sizeof(struct sr_ethernet_hdr) + ip_header_len);
+                if (icmp_header->icmp_type == ICMP_UNREACH || icmp_header->icmp_type == ICMP_TTL)
+                    return;
+            }
+        }
         
         /* Are we the destination? */
         if (iface = if_dst_check(sr, (uint32_t) (recv_hdr->ip_dst).s_addr)){  
