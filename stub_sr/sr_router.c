@@ -262,7 +262,7 @@ static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr)
             longest = count;
             rt_best = rt_ent;
         }
-        count = 0
+        count = 0;
     }
     if (rt_best) return rt_best;
     return rt_def;
@@ -645,27 +645,30 @@ void sr_handlepacket(struct sr_instance* sr,
             }
             else {
                 /* update and forward packet; if necessary, add it to queue */
-                int incache;
+                struct arpc_entry *incache;
                 //send_datagram is just a copy of recv_datagram with header updated; call to routing table lookup and checksum will be in this function
                 //also sets iface
                 update_ip_hdr(sr, recv_datagram, send_datagram, iface); 
-                incache = arp_cache_lookup(sr_arp_cache.first, (uint32_t)((((struct ip *)send_datagram)->ip_dst).s_addr)); //fills in dest_mac with correct MAC and returns 1 if found, otherwise return 0
+                incache = arp_cache_lookup(sr_arp_cache.first, (uint32_t)((((struct ip *)send_datagram)->ip_dst).s_addr));
                 if (!incache){
                     /* put COPY of datagram in queue */
-                    arp_queue_add(sr, send_datagram);
+                    arp_queue_add(sr, send_datagram); //still need to write this
                     
                     /* make ARP request */
-                    generate_arp(sr, send_datagram, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram
+                    generate_arp(sr, send_datagram, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram--still need to write this
                     memset(dest_mac, 0xFF, ETHER_ADDR_LEN); //set dest mac to broadcast address
                     ether_prot = ETHERTYPE_ARP;
                 }
+                else
+                    //set dest mac appropriately
+                    memcpy(dest_mac, incache->arpc_mac, ETHER_ADDR_LEN);
             }
         }
     }
     else if ( ((struct sr_ethernet_hdr *)packet)->ether_type == ETHERTYPE_ARP)
     {
         struct sr_arphdr *arp_header = (struct sr_arphdr*) recv_datagram;
-        if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_IP)
+        if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_ARP)
             return;
         
         uint8_t in_cache = 0;
@@ -681,10 +684,10 @@ void sr_handlepacket(struct sr_instance* sr,
         if( target_if = if_dst_check(sr, arp_header->ar_tip) )
         {
             if( !in_cache ) {
-                if( arp_cache_add(&sr_arpcache, arp_header->ar_sip, arp_header->ar_sha) ) {
+                if( arp_cache_add(&sr_arp_cache, arp_header->ar_sha, arp_header->ar_sip) ) {
                     struct arpq_entry *new_ent;
-                    if( new_ent = arp_queue_lookup(sr.arpqueue.first, arp_header->ar_sip) )
-                        arpq_entry_clear;
+                    if( new_ent = arp_queue_lookup(sr.arpqueue.first, arp_header->ar_sip) ) //sr is a pointer; do we want to store arpqueue in there?
+                        arpq_entry_clear; //should this have arguments? also, I'm pretty sure we want to do this later, when dealing with queue.
                 }
             }
             else perror("ARP request not added to cache");
@@ -707,7 +710,7 @@ void sr_handlepacket(struct sr_instance* sr,
         if (ether_prot == ETHERTYPE_IP)
             datagram_size = ((struct ip *)send_datagram)->ip_len;
         else
-            datagram_size = sizeof(sr_arphdr);
+            datagram_size = sizeof(struct sr_arphdr);
         encapsulate(iface, ether_prot, send_frame, send_datagram, datagram_size, dest_mac);
         sr_send_packet(sr, (uint8_t *)send_frame, sizeof(send_frame), (char *) iface);
     }
