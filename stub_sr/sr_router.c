@@ -265,46 +265,6 @@ static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr)
 }
 
 /*--------------------------------------------------------------------- 
- * Method: icmp_create
- * Scope:  Local
- *
- *
- *
- *
- *
- *
- *---------------------------------------------------------------------*/
-/*static void icmp_create(struct ip *ip_header, struct icmp_hdr *icmp_header,
-                        uint8_t type, uint8_t code, uint32_t s_ip, uint32_t d_ip,
-                        uint8_t *icmp_data, size_t icmp_data_len)
-{
-    assert(ip_header);
-    assert(icmp_header);
-    assert(icmp_data);
-    
-    ip_header->ip_v = 4;
-    ip_header->ip_hl = 5;
-    ip_header->ip_tos = 0;
-    ip_header->ip_id = 0;
-    ip_header->ip_off = 0;
-    ip_header->ip_ttl = INIT_TTL;
-    ip_header->ip_p = IPPROTO_ICMP;
-    ip_header->ip_len - htons(ip_header->ip_hl * WORD_SIZE + ICMP_HDR_LEN + icmp_data_len);
-    (ip_header->ip_src).s_addr = s_ip;
-    (ip_header->ip_dst).s_addr = d_ip;
-    ip_header->ip_sum = 0;
-    ip_header->ip_sum = compute_ip_checksum((uint16_t*) ip_header, ip_header->ip_hl * WORD_SIZE);
-    
-    icmp_header->icmp_type = type;
-    icmp_header->icmp_code = code;
-    icmp_header->icmp_unused = 0;
-    
-    memcpy(icmp_header + 1, icmp_data, icmp_data_len);
-    icmp_header->icmp_sum = 0;
-    icmp_header->icmp_sum = compute_ip_checksum((uint16_t*) icmp_header, ICMP_HDR_LEN + icmp_data_len);
-} */
-
-/*--------------------------------------------------------------------- 
  * Method: arp_cache_update;
  *
  *---------------------------------------------------------------------*/
@@ -397,8 +357,8 @@ static void arp_create(struct sr_arphdr *arp_header, struct sr_if *s_if, uint32_
     
     arp_header->ar_hrd = htons(1);
     arp_header->ar_pro = htons(ETHERTYPE_IP);
-    arp_header->ar_hln = htons(ETHER_ADDR_LEN);
-    arp_header->ar_pln = htons(4);
+    arp_header->ar_hln = ETHER_ADDR_LEN;
+    arp_header->ar_pln = 4;
     memcpy(arp_header->ar_tha, arp_header->ar_sha, ETHER_ADDR_LEN); //this will give nonsense for an arp request which is fine 
     memcpy(arp_header->ar_sha, s_if->addr, ETHER_ADDR_LEN);
     arp_header->ar_tip = ip; //this should be passed as an argument
@@ -499,6 +459,8 @@ void update_ip_hdr(struct sr_instance *sr, void *recv_datagram, void *send_datag
     memcpy(send_datagram, recv_datagram, ip_len);
     
     //also needs to do routing table lookup and set iface
+    struct sr_rt *router_entry = rt_match(sr, ntohl((recv_header->ip_dst).s_addr));
+    iface = if_name_search(sr, router_entry->interface);
     
     //update TTL and checksum
     send_header->ip_ttl--;
@@ -750,7 +712,7 @@ void sr_handlepacket(struct sr_instance* sr,
         if( target_if = if_dst_check(sr, arp_header->ar_tip) )
         {
             if( !in_cache ) {
-                if( arp_cache_add(&sr_arp_cache, arp_header->ar_sip, arp_header->ar_sha) ) {
+                if( arp_cache_add(&sr_arp_cache, arp_header->ar_sha, arp_header->ar_sip) ) {
                     struct arpq_entry *new_ent;
                     if( new_ent = arp_queue_lookup(sr_arp_queue.first, arp_header->ar_sip) )
                         arpq_entry_clear(sr, &sr_arp_queue, new_ent, arp_header->ar_sha);
