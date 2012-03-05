@@ -701,28 +701,32 @@ void sr_handlepacket(struct sr_instance* sr,
             }
             else {
                 /* update and forward packet; if necessary, add it to queue */
-                int incache;
+                struct arpc_entry *incache;
                 //send_datagram is just a copy of recv_datagram with header updated; call to routing table lookup and checksum will be in this function
                 //also sets iface
                 update_ip_hdr(sr, recv_datagram, send_datagram, iface); 
                 incache = arp_cache_lookup(sr_arp_cache.first, (uint32_t)((((struct ip *)send_datagram)->ip_dst).s_addr));
+
                 //fills in dest_mac with correct MAC and returns 1 if found, otherwise return 0 (still giving a pointer error TODO)
                 if (!incache){
                     /* put COPY of datagram in queue */
                     arpq_add_packet(sr, send_datagram, sizeof(send_datagram), iface);
                     
                     /* make ARP request */
-                    generate_arp(sr, send_datagram, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram
+                    generate_arp(sr, send_datagram, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram--still need to write this
                     memset(dest_mac, 0xFF, ETHER_ADDR_LEN); //set dest mac to broadcast address
                     ether_prot = ETHERTYPE_ARP;
                 }
+                else
+                    //set dest mac appropriately
+                    memcpy(dest_mac, incache->arpc_mac, ETHER_ADDR_LEN);
             }
         }
     }
     else if ( ((struct sr_ethernet_hdr *)packet)->ether_type == ETHERTYPE_ARP)
     {
         struct sr_arphdr *arp_header = (struct sr_arphdr*) recv_datagram;
-        if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_IP)
+        if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_ARP)
             return;
         
         uint8_t in_cache = 0;
