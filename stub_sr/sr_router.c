@@ -12,6 +12,7 @@
  **********************************************************************/
 
 #include <assert.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -159,6 +160,26 @@ static struct sr_if *if_dst_check(struct sr_instance *sr, uint32_t ip)
 }
 
 /*--------------------------------------------------------------------- 
+ * Method: get_interface
+ *
+ *---------------------------------------------------------------------*/
+static struct sr_if *get_interface(struct sr_instance *sr, const char *if_name)
+{
+    assert(sr);
+    assert(name);
+    
+    struct sr_if *iface = sr->if_list;
+    
+    while(iface)
+    {
+        if(!strncmp(iface->name, if_name, sr_IFACE_NAMELEN))
+            return iface;
+        iface = iface->next;
+    }
+    return NULL;
+}
+
+/*--------------------------------------------------------------------- 
  * Method: if_ip_search
  *
  *---------------------------------------------------------------------*/
@@ -221,47 +242,26 @@ void encapsulate(struct sr_if *iface, uint16_t prot, void *send_frame, void *sen
  * Method: rt_match
  *
  *---------------------------------------------------------------------*/
-static struct sr_rt *rt_match(struct sr_instance *sr, uint8_t *addr)
+static struct sr_rt *rt_match(struct sr_instance *sr, uint32_t addr)
 {
-    assert(sr);
-    assert(addr);
-    
-    struct sr_rt *rt_ent, *rt_def = NULL, *rt_best = NULL;
-    uint8_t *addr_b, *rt_b, *mask;
-    uint8_t match, mismatch = 0, count = 0, longest = 0;
-    
-    for( rt_ent = sr->routing_table; rt_ent; rt_ent = rt_ent->next )
+    struct sr_rt *curr = sr->routing_table;
+    struct sr_rt *best = NULL;
+    while (curr)
     {
-        if(!rt_def) {
-            if((rt_ent->dest).s_addr == 0)
-                rt_def = rt_ent;
-        }
-        
-        addr_b = addr;
-        rt_b = (uint8_t *) &((rt_ent->dest).s_addr);
-        mask = (uint8_t *) &((rt_ent->mask).s_addr);
-        
-        for(; addr_b < addr + WORDTOBYTE; addr_b++, rt_b++, mask++)
+        uint32_t subnet = curr->dest.s_addr & curr->mask.s_addr;
+        if (subnet == (addr & curr->mask.s_addr))
         {
-            if (!(match = (*addr_b)&(*mask))) break;
-            
-            if(match != *rt_b) {
-                mismatch = 1;
-                break;
+            if (!best) best = curr;
+            else
+            {
+                /* compare number of bits in mask: more bits -> bigger number */
+                if (ntohl(curr->mask.s_addr) > ntohl(best->mask.s_addr))
+                    best = curr;
             }
-            count += 1;
         }
-        
-        if (mismatch) mismatch = 0;
-        
-        else if(count > longest) {
-            longest = count;
-            rt_best = rt_ent;
-        }
-        count = 0;
+        curr = curr->next;
     }
-    if (rt_best) return rt_best;
-    return rt_def;
+    return best;
 }
 
 /*--------------------------------------------------------------------- 
