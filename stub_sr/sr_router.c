@@ -111,7 +111,7 @@ struct frame_t {
     int MAC_set; //flag for whether MAC has been determined yet, for outgoing packets
     uint32_t from_ip;
     uint32_t to_ip;
-    sr_if *iface;
+    struct sr_if *iface;
     size_t len; //total size of frame
     size_t ip_hl; //in bytes!
     size_t ip_len; //these two zero unless it's an IP datagram
@@ -233,7 +233,7 @@ static void compute_icmp_checksum(struct frame_t *frame)
     sum = (sum >> 16) + (sum & 0xffff);
     sum += (sum >> 16);
     
-    icmphdr->icmp_sum = ~sum;
+    icmp_header->icmp_sum = ~sum;
 }
 
 /*--------------------------------------------------------------------- 
@@ -244,7 +244,7 @@ static void compute_icmp_checksum(struct frame_t *frame)
  *
  * 
  *---------------------------------------------------------------------*/
-static void compute_icmp_checksum(struct frame_t *frame)
+static void compute_ip_checksum(struct frame_t *frame)
 {
     struct ip *ip_header = frame->ip_header;
     
@@ -262,7 +262,7 @@ static void compute_icmp_checksum(struct frame_t *frame)
     sum = (sum >> 16) + (sum & 0xffff);
     sum += (sum >> 16);
     
-    ip_hdr->ip_sum = ~sum;
+    ip_header->ip_sum = ~sum;
 }
 
 /*--------------------------------------------------------------------- 
@@ -504,7 +504,7 @@ static void arp_create(incoming, outgoing, struct sr_if *iface, unsigned short o
     //fill out MAC and IP addresses
     memcpy(outgoing->arp_header->ar_tha, incoming->from_MAC, ETHER_ADDR_LEN); //this will give nonsense for an arp request which is fine--unless we need a broadcast address, but I don't think so 
     memcpy(outgoing->arp_header->ar_sha, iface->addr, ETHER_ADDR_LEN);
-    memcpy(outgoing, from_MAC, iface->addr, ETHER_ADDR_LEN);
+    memcpy(outgoing->from_MAC, iface->addr, ETHER_ADDR_LEN);
     
     if (op == ARP_REQUEST){
         outgoing->arp_header->ar_tip = htonl(incoming->to_ip); //incoming is an IP datagram, we want to know MAC of IP it's sending to
@@ -629,7 +629,7 @@ static void arp_queue_flush(struct arp_queue *queue)
     struct arpq_entry *temp = NULL;
     
     while(entry) {
-        if( time() - 1 > entry->arpq_last_req)
+        if( time(NULL) - 1 > entry->arpq_last_req)
         {
             if(entry->arpq_num_reqs >= ARP_MAX_REQ) {
                 temp = entry;
@@ -854,7 +854,7 @@ void ip_header_create(struct frame_t *outgoing)
     send_header->ip_off = 0;
     send_header->ip_ttl = INIT_TTL;
     send_header->ip_p = IPPROTO_ICMP;
-    send_header->ip_len = htons(outgoing->ip_len));
+    send_header->ip_len = htons(outgoing->ip_len);
     send_header->ip_src.s_addr = htonl(outgoing->to_ip);
     send_header->ip_dst.s_addr = htonl(outgoing->to_ip);
     send_header->ip_sum = 0;
@@ -980,7 +980,7 @@ void generate_icmp_error(struct frame_t *incoming, struct frame_t *outgoing, uin
     outgoing->icmp_header->icmp_unused = 0;
     
     /* copy data into header: packet includes IP header, ICMP header, and beginning of original packet */
-    void *icmp_data = outgoing->icmp_header + sizeof(icmp_header);
+    void *icmp_data = outgoing->icmp_header + sizeof(outgoing->icmp_header);
     assert(icmp_data);
     memcpy(icmp_data, incoming->ip_header, icmp_data_len);
 
