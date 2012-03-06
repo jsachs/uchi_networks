@@ -692,6 +692,7 @@ static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struc
     outgoing->len = sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr);
     outgoing->frame = malloc(outgoing->len);
     outgoing->ether_header = (struct sr_ethernet_hdr *)outgoing->frame;
+    
     outgoing->arp_header = (struct sr_arphdr *)(outgoing->frame + sizeof(struct sr_ethernet_hdr));
     outgoing->ip_header = NULL;
     outgoing->icmp_header = NULL;
