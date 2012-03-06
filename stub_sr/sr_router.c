@@ -130,7 +130,8 @@ static struct arp_queue sr_arp_queue = {0, 0};
  * This method sets up a new frame_t structure based on an incoming packet
  *---------------------------------------------------------------------*/
 
-static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_t len, char *if_name){
+static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_t len, char *if_name)
+{
     struct frame_t *new_frame = (struct frame_t *)malloc(sizeof(struct frame_t));
     
     assert(new_frame);
@@ -170,7 +171,7 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
         assert(new_frame->arp_header);
         
         new_frame->from_ip = ntohl(new_frame->arp_header->ar_sip);
-        new_frame->to_ip = ntohl(new_frame->arp_header->ar_tip_;
+        new_frame->to_ip = ntohl(new_frame->arp_header->ar_tip);
     }
     else{
         perror("Unrecognized protocol");
@@ -204,26 +205,54 @@ void sr_init(struct sr_instance* sr)
 } /* -- sr_init -- */
 
 /*--------------------------------------------------------------------- 
- * Method: compute_checksum(uint16_t const ipHeader[], int nWords)
+ * Method: compute_icmp_checksum
  * Scope:  Local
  *
- * calculates a checksum value for IP headers and ICMP messages
+ * calculates a checksum value for ICMP headers
  *
- * algorithm taken from www.netrino.com
+ * 
  *---------------------------------------------------------------------*/
-static uint16_t compute_checksum(uint16_t *ip_header, size_t len)
+void compute_icmp_checksum(struct sr_icmphdr *icmp_header, uint8_t *packet, int len)
 {
-    assert(ip_header);
+    uint32_t sum = 0;
+    icmp_header->icmp_sum = 0;
     
-    uint16_t sum = 0; // right size?
-
-    while(len--) sum += *(ip_header++);
-
-    if(len%2) sum += *((uint8_t*) ip_header); // assuming even number of bytes
+    uint16_t *tmp = (uint16_t *) packet;
     
-    while(sum>>16) sum = (sum >> 16) + (sum & 0xffff);
+    int i;
+    for (i = 0; i < len / 2; i++) {
+        sum += tmp[i];
+    }
+    
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    
+    icmphdr->icmp_sum = ~sum;
+}
 
-    return ((uint16_t) ~sum);
+/*--------------------------------------------------------------------- 
+ * Method: compute_ip_checksum
+ * Scope:  Local
+ *
+ * calculates a checksum value for IP headers
+ *
+ * 
+ *---------------------------------------------------------------------*/
+void compute_ip_checksum(struct ip *ip_header)
+{
+    uint32_t sum = 0;
+    ip_header->ip_sum = 0;
+    
+    uint16_t *temp = (uint16_t *) ip_header;
+    
+    int i;
+    for (i = 0; i < ip_hdr->ip_hl * 2; i++)
+        sum += tmp[i];
+    
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    
+    ip_hdr->ip_sum = ~sum;
 }
 
 /*--------------------------------------------------------------------- 
