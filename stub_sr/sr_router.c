@@ -687,12 +687,12 @@ static void arpq_entry_clear(struct sr_instance *sr,
  * Method: arp_create;
  *
  *---------------------------------------------------------------------*/
-static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struct sr_if *iface, unsigned short op)
+static struct frame_t *arp_create(struct sr_instance *sr, struct frame_t *incoming, struct sr_if *iface, unsigned short op)
 {
     assert(incoming);
     
     //create and fill out frame_t
-    outgoing = malloc(sizeof(struct frame_t));
+    struct frame_t *outgoing = malloc(sizeof(struct frame_t));
     
     assert(outgoing);
     
@@ -721,7 +721,7 @@ static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struc
     
     if (op == ARP_REQUEST){
         struct sr_rt *route_entry = rt_match(sr, ntohl(iface->ip));
-        outgoing->arp_header->ar_tip = route_entry->dest->s_addr; //incoming is an IP datagram, we want to know MAC of next hop in routing table
+        outgoing->arp_header->ar_tip = route_entry->dest.s_addr; //incoming is an IP datagram, we want to know MAC of next hop in routing table
         outgoing->to_ip = outgoing->arp_header->ar_tip;
         memset(outgoing->to_MAC, 0xFF, ETHER_ADDR_LEN); //set outgoing MAC to broadcast address 
     }
@@ -738,7 +738,7 @@ static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struc
     encapsulate(outgoing);
     assert(outgoing);
     
-    return;
+    return outgoing;
 }
                                  
 
@@ -856,7 +856,7 @@ static void arp_queue_flush(struct sr_instance *sr, struct arp_queue *queue)
             }
             else {
                 struct queued_packet *old_packet = entry->arpq_packets.first;
-                arp_create(old_packet->outgoing, arp_req, old_packet->from_iface, ARP_REQUEST);
+                arp_req = arp_create(sr, old_packet->outgoing, old_packet->from_iface, ARP_REQUEST);
                 sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->from_iface->name);
                 destroy_frame_t(arp_req);
             }
@@ -1057,7 +1057,7 @@ void sr_handlepacket(struct sr_instance* sr,
                     destroy_frame_t(outgoing);
                     
                     /* make ARP request */
-                    arp_create(incoming, outgoing, out_interface, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram 
+                    outgoing = arp_create(sr, incoming, out_interface, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram 
                     printf("sending ARP request\n");
                 }
                 else{
@@ -1101,7 +1101,7 @@ void sr_handlepacket(struct sr_instance* sr,
                 else perror("ARP request not added to cache");
             }
             if( ntohs(arp_header->ar_op) == ARP_REQUEST ){
-                arp_create(incoming, outgoing, incoming->iface, ARP_REPLY);
+                outgoing = arp_create(sr, incoming, incoming->iface, ARP_REPLY);
                 printf("created ARP reply\n");
                 
                 assert(outgoing);
