@@ -519,6 +519,8 @@ static void arp_create(incoming, outgoing, struct sr_if *iface, unsigned short o
     
     outgoing->arp_header->ar_op = htons(op);
     
+    encapsulate(outgoing);
+    
     return;
 }
                                  
@@ -1046,7 +1048,6 @@ void sr_handlepacket(struct sr_instance* sr,
             /* Has it timed out? */
             if (ntohl(recv_hdr->ip_ttl) <= 0){
                 generate_icmp_error(incoming, outgoing, TIME_EXCEEDED, TIME_INTRANSIT);
-                //memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t));
             }
             else {
                 //uint32_t send_ip = (recv_hdr->ip_dst).s_addr;
@@ -1055,24 +1056,24 @@ void sr_handlepacket(struct sr_instance* sr,
                 //send_datagram is just a copy of recv_datagram with header updated; call to routing table lookup and checksum will be in this function
                 //also sets iface
                 update_ip_hdr(sr, incoming, outgoing); 
-
-                incache = arp_cache_lookup(sr_arp_cache.first, send_ip);
+                
+                incache = arp_cache_lookup(sr_arp_cache.first, outgoing->to_ip);
                 
                 
                 if (!incache){
                     
                     if (arp_queue_lookup(sr_arp_queue.first, send_ip)){ //if we've already sent an ARP request about this IP
-                        arpq_add_entry(&sr_arp_queue, iface, (uint8_t *)send_datagram, send_ip, ntohs(recv_hdr->ip_len)); 
+                        arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len); 
                     }
-                    else arpq_add_packet(sr_arp_queue.first, (uint8_t *)send_datagram, ntohs (recv_hdr->ip_len));
+                    else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len);
                 
-                    free(send_datagram);
+                    frame_destroy(outgoing); //TODO: create this function
                     
                     /* make ARP request */
-                    send_datagram = malloc(sizeof(struct sr_arphdr));
+                    //send_datagram = malloc(sizeof(struct sr_arphdr));
                     arp_create(outgoing, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram--still need to write this
-                    memset(dest_mac, 0xFF, ETHER_ADDR_LEN); //set dest mac to broadcast address
-                    ether_prot = ETHERTYPE_ARP;
+                    //memset(dest_mac, 0xFF, ETHER_ADDR_LEN); //set dest mac to broadcast address
+                    //ether_prot = ETHERTYPE_ARP;
                 }
                 else{
                     memcpy(outgoing->to_MAC, incache->arpc_mac, ETHER_ADDR_LEN);
