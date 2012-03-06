@@ -49,6 +49,9 @@
 #define BYTETO16BIT 2
 #define WORDTOBYTE  4
 
+#define IN 0
+#define OUT 1
+
 
 struct icmp_hdr {
     uint8_t  icmp_type;
@@ -104,8 +107,6 @@ struct frame_t {
     struct sr_arphdr *arp_header; //pointer to arp header--NULL if not ARP
     struct icmp_hdr *icmp_header; //pointer to ICMP header--NULL if not ICMP
     int in_or_out; //flag for whether this is an incoming or outgoing packet
-#define IN 0
-#define OUT 1
     uint8_t from_MAC[ETHER_ADDR_LEN];
     uint8_t to_MAC[ETHER_ADDR_LEN];
     int MAC_set; //flag for whether MAC has been determined yet, for outgoing packets
