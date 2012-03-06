@@ -181,8 +181,8 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
         
         new_frame->ip_len = ntohs(new_frame->ip_header->ip_len);
         new_frame->ip_hl = ntohl(new_frame->ip_header->ip_hl) * WORDTOBYTE;
-        new_frame->from_ip = ntohl(new_frame->ip_header->ip_src.s_addr);
-        new_frame->to_ip = ntohl(new_frame->ip_header->ip_dst.s_addr);
+        new_frame->from_ip = new_frame->ip_header->ip_src.s_addr;
+        new_frame->to_ip = new_frame->ip_header->ip_dst.s_addr;
         if (new_frame->ip_header->ip_p == IPPROTO_ICMP)
             new_frame->icmp_header = (struct icmp_hdr *)(new_frame->ip_header + new_frame->ip_hl);
     }
@@ -192,8 +192,8 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
         
         assert(new_frame->arp_header);
         
-        new_frame->from_ip = ntohl(new_frame->arp_header->ar_sip);
-        new_frame->to_ip = ntohl(new_frame->arp_header->ar_tip);
+        new_frame->from_ip = new_frame->arp_header->ar_sip;
+        new_frame->to_ip = new_frame->arp_header->ar_tip;
     }
     else{
         perror("Unrecognized protocol");
@@ -491,8 +491,8 @@ void ip_header_create(struct frame_t *outgoing)
     send_header->ip_ttl = INIT_TTL;
     send_header->ip_p = IPPROTO_ICMP;
     send_header->ip_len = htons(outgoing->ip_len);
-    send_header->ip_src.s_addr = htonl(outgoing->to_ip);
-    send_header->ip_dst.s_addr = htonl(outgoing->to_ip);
+    send_header->ip_src.s_addr = outgoing->to_ip;
+    send_header->ip_dst.s_addr = outgoing->to_ip;
     send_header->ip_sum = 0;
     compute_ip_checksum(outgoing); 
     return;
@@ -682,10 +682,13 @@ static void arpq_entry_clear(struct sr_instance *sr,
  *---------------------------------------------------------------------*/
 static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struct sr_if *iface, unsigned short op)
 {
-    assert(outgoing);
+    assert(incoming);
     
     //create and fill out frame_t
     outgoing = malloc(sizeof(struct frame_t));
+    
+    assert(outgoing);
+    
     outgoing->len = sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr);
     outgoing->frame = malloc(outgoing->len);
     outgoing->ether_header = (struct sr_ethernet_hdr *)outgoing->frame;
@@ -709,16 +712,16 @@ static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struc
     memcpy(outgoing->from_MAC, iface->addr, ETHER_ADDR_LEN);
     
     if (op == ARP_REQUEST){
-        outgoing->arp_header->ar_tip = htonl(incoming->to_ip); //incoming is an IP datagram, we want to know MAC of IP it's sending to
+        outgoing->arp_header->ar_tip = iface->ip; //incoming is an IP datagram, we want to know MAC of next hop in routing table
         outgoing->to_ip = incoming->to_ip;
         memset(outgoing->to_MAC, 0xFF, ETHER_ADDR_LEN); //set outgoing MAC to broadcast address 
     }
     else{
-        outgoing->arp_header->ar_tip = htonl(incoming->from_ip); //incoming is an ARP request, we want to send back to that IP
+        outgoing->arp_header->ar_tip = incoming->from_ip; //incoming is an ARP request, we want to send back to that IP
         outgoing->to_ip = incoming->from_ip;
     }
     
-    outgoing->arp_header->ar_sip = htonl(outgoing->iface->ip);
+    outgoing->arp_header->ar_sip = outgoing->iface->ip;
     outgoing->from_ip = outgoing->iface->ip;
     
     outgoing->arp_header->ar_op = htons(op);
@@ -934,7 +937,7 @@ void update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, struct fram
     outgoing->len = incoming->len;
     
     //also needs to do routing table lookup and set iface
-    struct sr_rt *router_entry = rt_match(sr, incoming->to_ip);
+    struct sr_rt *router_entry = rt_match(sr, ntohl(incoming->to_ip));
     outgoing->iface = get_interface(sr, router_entry->interface);
     memcpy(outgoing->from_MAC, outgoing->iface->addr, ETHER_ADDR_LEN);
     outgoing->ip_header->ip_sum = 0;
