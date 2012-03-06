@@ -212,8 +212,15 @@ void sr_init(struct sr_instance* sr)
  *
  * 
  *---------------------------------------------------------------------*/
-void compute_icmp_checksum(struct sr_icmphdr *icmp_header, uint8_t *packet, int len)
+static void compute_icmp_checksum(struct sr_icmphdr *icmp_header, uint8_t *packet, int len)
+static void compute_icmp_checksum(struct frame_t *frame)
 {
+    struct sr_icmphdr *icmp_header = frame->icmp_header;
+    uint8_t *packet = (uint8_t *) icmp_header;
+    int len = frame->len - sizeof(struct sr_ethernet_hdr) - frame->ip_hdr->ip_hl * WORD_SIZE;
+    
+    if (!len%2) len++;
+    
     uint32_t sum = 0;
     icmp_header->icmp_sum = 0;
     
@@ -238,16 +245,20 @@ void compute_icmp_checksum(struct sr_icmphdr *icmp_header, uint8_t *packet, int 
  *
  * 
  *---------------------------------------------------------------------*/
-void compute_ip_checksum(struct ip *ip_header)
+static void compute_icmp_checksum(struct frame_t *frame)
 {
+    struct ip *ip_header = frame->ip_header;
+    
     uint32_t sum = 0;
     ip_header->ip_sum = 0;
     
     uint16_t *temp = (uint16_t *) ip_header;
     
+    if (!ip_header->ip_hl%2) ip_header->ip_hl++;
+    
     int i;
-    for (i = 0; i < ip_hdr->ip_hl * 2; i++)
-        sum += tmp[i];
+    for (i = 0; i < ip_header->ip_hl * 2; i++)
+        sum += temp[i];
     
     sum = (sum >> 16) + (sum & 0xffff);
     sum += (sum >> 16);
