@@ -393,6 +393,7 @@ static struct arpq_entry *arp_queue_lookup(struct arpq_entry *entry, uint32_t ip
  * This method fills in the ethernet header fields for the packet
  *---------------------------------------------------------------------*/
 void encapsulate(struct frame_t *outgoing){
+    assert(outgoing);
     struct sr_ethernet_hdr *ether_header = outgoing->ether_header;
     memcpy(ether_header->ether_shost, outgoing->from_MAC, ETHER_ADDR_LEN);
     memcpy(ether_header->ether_dhost, outgoing->to_MAC, ETHER_ADDR_LEN);
@@ -733,6 +734,7 @@ static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struc
     outgoing->arp_header->ar_op = htons(op);
     
     encapsulate(outgoing);
+    assert(outgoing);
     
     return;
 }
@@ -882,7 +884,7 @@ static void arp_cache_flush(struct arp_cache *cache)
     assert(cache);
     
     struct arpc_entry *entry = cache->first;
-    struct arpc_entry *temp = NULL;
+    struct arpc_entry *temp;
     
     while(entry) {
         if( time(NULL) > entry->arpc_timeout)
@@ -1099,6 +1101,8 @@ void sr_handlepacket(struct sr_instance* sr,
             if( ntohs(arp_header->ar_op) == ARP_REQUEST ){
                 arp_create(incoming, outgoing, incoming->iface, ARP_REPLY);
                 printf("created ARP reply\n");
+                
+                assert(outgoing);
             }
         }
     }
