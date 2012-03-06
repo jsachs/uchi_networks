@@ -249,14 +249,20 @@ void sr_init(struct sr_instance* sr)
     /* Add initialization code here! */
     
     // initialize ARP cache
-    /*struct arpc_entry *empty_arpc_entry;
+    struct arpc_entry *empty_arpc_entry = (struct arpc_entry *)malloc(sizeof(struct arpc_entry));
+    empty_arpc_entry->arpc_ip = 0;
+    empty_arpc_entry->arpc_timeout = 0;
+    empty_arpc_entry->prev = NULL;
+    empty_arpc_entry->next = NULL;
+    for(int i = 0; i < ETHER_ADDR_LEN; i++)
+        empty_arpc_entry->arpc_mac[i] = 0xff;
     assert(empty_arpc_entry);
     sr_arp_cache.first = empty_arpc_entry;
     
     // initialize ARP queue
-    struct arpq_entry *empty_arpq_entry;
+    struct arpq_entry *empty_arpq_entry = (struct arpq_entry *)malloc(sizeof(struct arpq_entry));
     assert(empty_arpq_entry);
-    sr_arp_queue.first = empty_arpq_entry;*/
+    sr_arp_queue.first = empty_arpq_entry;
     
 } /* -- sr_init -- */
 
@@ -387,6 +393,7 @@ static struct arpq_entry *arp_queue_lookup(struct arpq_entry *entry, uint32_t ip
  * This method fills in the ethernet header fields for the packet
  *---------------------------------------------------------------------*/
 void encapsulate(struct frame_t *outgoing){
+    assert(outgoing);
     struct sr_ethernet_hdr *ether_header = outgoing->ether_header;
     memcpy(ether_header->ether_shost, outgoing->from_MAC, ETHER_ADDR_LEN);
     memcpy(ether_header->ether_dhost, outgoing->to_MAC, ETHER_ADDR_LEN);
@@ -729,6 +736,7 @@ static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struc
     outgoing->arp_header->ar_op = htons(op);
     
     encapsulate(outgoing);
+    assert(outgoing);
     
     return;
 }
@@ -878,7 +886,7 @@ static void arp_cache_flush(struct arp_cache *cache)
     assert(cache);
     
     struct arpc_entry *entry = cache->first;
-    struct arpc_entry *temp = NULL;
+    struct arpc_entry *temp;
     
     while(entry) {
         if( time(NULL) > entry->arpc_timeout)
@@ -1070,8 +1078,9 @@ void sr_handlepacket(struct sr_instance* sr,
         
         uint8_t in_cache = 0;
         
-        struct arpc_entry *arpc_ent;
-        if( arpc_ent = arp_cache_lookup(sr_arp_cache.first, arp_header->ar_sip) )
+        struct arpc_entry *arpc_ent = arp_cache_lookup(sr_arp_cache.first, arp_header->ar_sip);
+        printf("checking the cache\n");
+        if( arpc_ent )
         {
             arp_cache_update(arpc_ent, arp_header->ar_sha);
             printf("updated cache\n");
@@ -1079,7 +1088,7 @@ void sr_handlepacket(struct sr_instance* sr,
         }
         
         struct sr_if *target_if = if_dst_check(sr, arp_header->ar_tip);
-        
+        printf("checking the target\n");
         if( target_if )
         {
             printf("It's for us\n");
@@ -1094,6 +1103,8 @@ void sr_handlepacket(struct sr_instance* sr,
             if( ntohs(arp_header->ar_op) == ARP_REQUEST ){
                 arp_create(incoming, outgoing, incoming->iface, ARP_REPLY);
                 printf("created ARP reply\n");
+                
+                assert(outgoing);
             }
         }
     }
