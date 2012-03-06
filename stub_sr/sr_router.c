@@ -174,7 +174,7 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
     new_frame->ip_hl = 0;
     
     if (ntohs(new_frame->ether_header->ether_type)==ETHERTYPE_IP){
-        new_frame->ip_header = (struct ip *)(new_frame->ether_header + sizeof(struct sr_ethernet_hdr));
+        new_frame->ip_header = (struct ip *)(new_frame->frame + sizeof(struct sr_ethernet_hdr));
         new_frame->arp_header = NULL;
         
         assert (new_frame->ip_header);
@@ -187,7 +187,7 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
             new_frame->icmp_header = (struct icmp_hdr *)(new_frame->ip_header + new_frame->ip_hl);
     }
     else if(ntohs(new_frame->ether_header->ether_type)==ETHERTYPE_ARP){
-        new_frame->arp_header = (struct sr_arphdr *) (new_frame->ether_header + sizeof(struct sr_ethernet_hdr));
+        new_frame->arp_header = (struct sr_arphdr *) (new_frame->frame + sizeof(struct sr_ethernet_hdr));
         new_frame->ip_header = NULL;
         
         assert(new_frame->arp_header);
