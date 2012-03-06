@@ -719,8 +719,9 @@ static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struc
     memcpy(outgoing->from_MAC, iface->addr, ETHER_ADDR_LEN);
     
     if (op == ARP_REQUEST){
-        outgoing->arp_header->ar_tip = iface->ip; //incoming is an IP datagram, we want to know MAC of next hop in routing table
-        outgoing->to_ip = incoming->to_ip;
+        struct sr_rt *route_entry = rt_match(sr, ntohl(iface->ip));
+        outgoing->arp_header->ar_tip = route_entry->dest->s_addr; //incoming is an IP datagram, we want to know MAC of next hop in routing table
+        outgoing->to_ip = outgoing->arp_header->ar_tip;
         memset(outgoing->to_MAC, 0xFF, ETHER_ADDR_LEN); //set outgoing MAC to broadcast address 
     }
     else{
