@@ -115,6 +115,7 @@ struct frame_t {
     size_t len; //total size of frame
     size_t ip_hl; //in bytes!
     size_t ip_len; //these two zero unless it's an IP datagram
+    struct frame_t *next_frame; //for use in arp queue
 };
 
 static struct arp_cache sr_arp_cache = {0, 0};
@@ -212,7 +213,6 @@ void sr_init(struct sr_instance* sr)
  *
  * 
  *---------------------------------------------------------------------*/
-static void compute_icmp_checksum(struct sr_icmphdr *icmp_header, uint8_t *packet, int len)
 static void compute_icmp_checksum(struct frame_t *frame)
 {
     struct sr_icmphdr *icmp_header = frame->icmp_header;
@@ -445,16 +445,19 @@ static void arpq_entry_clear(struct sr_instance *sr,
     assert(entry);
     assert(d_ha);
     
-    struct queued_packet *qpacket;
+    struct frame_t *qpacket;
     
     while( qpacket = ((entry->arpq_packets).first) )
     {
-        memcpy(( (struct sr_ethernet_hdr *) qpacket->packet)->ether_shost, (entry->arpq_if)->addr, ETHER_ADDR_LEN);
-        memcpy(( (struct sr_ethernet_hdr *) qpacket->packet)->ether_dhost, d_ha, ETHER_ADDR_LEN);
+        memcpy(qpacket->from_MAC, (entry->arpq_if)->addr, ETHER_ADDR_LEN);
+        memcpy(qpacket-to_MAC, d_ha, ETHER_ADDR_LEN);
         
-        struct ip *s_ip = (struct ip *) ( qpacket->packet + sizeof(struct sr_ethernet_hdr));
-        s_ip->ip_sum = 0;
-        s_ip->ip_sum = compute_checksum( (uint16_t *) s_ip, s_ip->ip_hl * WORD_SIZE);
+        encapsulate(qpacket);
+        send_frame(qpacket); //TODO: write send_frame
+        
+        //struct ip *s_ip = (struct ip *) ( qpacket->packet + sizeof(struct sr_ethernet_hdr));
+        //s_ip->ip_sum = 0;
+        //s_ip->ip_sum = compute_checksum( (uint16_t *) s_ip, s_ip->ip_hl * WORD_SIZE);
         
         if( !((entry->arpq_packets).first = qpacket->next) )
             (entry->arpq_packets).last = NULL;
@@ -529,7 +532,7 @@ static void arp_create(incoming, outgoing, struct sr_if *iface, unsigned short o
  * Method: arpq_add_packet
  *
  *---------------------------------------------------------------------*/
-static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, uint8_t *packet, unsigned p_len /*, char *if_name*/)
+static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, uint8_t *packet /* this can be a frame_t */, unsigned p_len /*, char *if_name*/)
 {
     assert(entry);
     assert(packet);
@@ -558,7 +561,7 @@ static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, uint8_t *
  * Method: arpq_add_entry
  *
  *---------------------------------------------------------------------*/
-static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *iface, /* char *icmp_if, */uint8_t *packet, uint32_t ip, unsigned len)
+static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *iface, /* char *icmp_if, */uint8_t *packet /* this can be a frame_t */, uint32_t ip, unsigned len)
 {
     assert(queue);
     assert(iface);
@@ -1018,8 +1021,10 @@ void sr_handlepacket(struct sr_instance* sr,
         //struct ip *recv_hdr = (struct ip *)recv_datagram;
         //size_t ip_header_len = recv_datagram->ip_hl * WORD_SIZE;
         
+        compute_ip_checksum(incoming);
+        
         /* Check the checksum */
-        if( compute_ip_checksum(outgoing) != 0xFFFF ) { //okay, we'll need to figure out how to deal with that
+        if( incoming->ip_header->ip_sum != 0xffff ) { 
             fprintf(stderr, "IP checksum incorrect, packet was dropped\n");
             return;
         }
@@ -1082,9 +1087,10 @@ void sr_handlepacket(struct sr_instance* sr,
             }
         }
     }
-    else if ( ((struct sr_ethernet_hdr *)packet)->ether_type == ETHERTYPE_ARP)
+    else if ( incoming->arp_header )
     {
-        struct sr_arphdr *arp_header = (struct sr_arphdr*) recv_datagram;
+        struct sr_arphdr *arp_header = incoming->arp_header;
+        
         if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_ARP)
             return;
         
