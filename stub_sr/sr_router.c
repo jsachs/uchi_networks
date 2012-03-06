@@ -261,6 +261,13 @@ void sr_init(struct sr_instance* sr)
     
     // initialize ARP queue
     struct arpq_entry *empty_arpq_entry = (struct arpq_entry *)malloc(sizeof(struct arpq_entry));
+    empty_arpq_entry->arpq_ip = 0;
+    empty_arpq_entry->arpq_if = NULL;
+    empty_arpq_entry->arpq_last_req = 0;
+    empty_arpq_entry->arpq_num_reqs = 0;
+    empty_arpq_entry->prev = NULL;
+    empty_arpq_entry->next = NULL;
+
     assert(empty_arpq_entry);
     sr_arp_queue.first = empty_arpq_entry;
     
