@@ -249,8 +249,15 @@ void sr_init(struct sr_instance* sr)
     /* Add initialization code here! */
     
     // initialize ARP cache
+    /*struct arpc_entry *empty_arpc_entry;
+    assert(empty_arpc_entry);
+    sr_arp_cache.first = empty_arpc_entry;
+    
     // initialize ARP queue
-
+    struct arpq_entry *empty_arpq_entry;
+    assert(empty_arpq_entry);
+    sr_arp_queue.first = empty_arpq_entry;*/
+    
 } /* -- sr_init -- */
 
 /*--------------------------------------------------------------------- 
@@ -352,7 +359,6 @@ struct sr_if *if_ip_search(struct sr_if *iface, uint32_t ip)
  *---------------------------------------------------------------------*/
 static struct arpc_entry *arp_cache_lookup(struct arpc_entry *entry, uint32_t ip)
 {
-    assert(entry);
     while( entry && (ip != entry->arpc_ip) )
         entry = entry->next;
     
@@ -367,7 +373,6 @@ static struct arpc_entry *arp_cache_lookup(struct arpc_entry *entry, uint32_t ip
  *---------------------------------------------------------------------*/
 static struct arpq_entry *arp_queue_lookup(struct arpq_entry *entry, uint32_t ip)
 {
-    assert(entry);
     while( entry && (ip != entry->arpq_ip) )
         entry = entry->next;
     
@@ -1056,8 +1061,7 @@ void sr_handlepacket(struct sr_instance* sr,
         
         struct sr_arphdr *arp_header = incoming->arp_header;
         
-        if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_ARP)
-            return;
+        //if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_IP) return;
         
         uint8_t in_cache = 0;
         
@@ -1069,21 +1073,23 @@ void sr_handlepacket(struct sr_instance* sr,
             in_cache = 1;
         }
         
-        struct sr_if *target_if;
-        if( target_if = if_dst_check(sr, arp_header->ar_tip) )
+        struct sr_if *target_if = if_dst_check(sr, arp_header->ar_tip);
+        
+        if( target_if )
         {
+            printf("It's for us\n");
             if( !in_cache ) {
                 if( arp_cache_add(&sr_arp_cache, arp_header->ar_sha, arp_header->ar_sip) ) {
                     struct arpq_entry *new_ent;
                     if( new_ent = arp_queue_lookup(sr_arp_queue.first, arp_header->ar_sip) )
                         arpq_entry_clear(sr, &sr_arp_queue, new_ent, arp_header->ar_sha);
                 }
+                else perror("ARP request not added to cache");
             }
-            else perror("ARP request not added to cache");
-        }
-        if( ntohs(arp_header->ar_op) == ARP_REQUEST ){
-            arp_create(incoming, outgoing, incoming->iface, ARP_REPLY);
-            printf("created ARP reply\n");
+            if( ntohs(arp_header->ar_op) == ARP_REQUEST ){
+                arp_create(incoming, outgoing, incoming->iface, ARP_REPLY);
+                printf("created ARP reply\n");
+            }
         }
     }
     else perror("Unknown protocol");
