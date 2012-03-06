@@ -49,6 +49,10 @@
 #define BYTETO16BIT 2
 #define WORDTOBYTE  4
 
+/* for frame_t */
+#define IN 0
+#define OUT 1
+
 
 struct icmp_hdr {
     uint8_t  icmp_type;
@@ -73,8 +77,8 @@ struct queued_packet {
 };
 
 struct packetq {
-    struct frame_t *first;
-    struct frame_t *last;
+    struct queued_packet *first;
+    struct queued_packet *last;
 };
 
 struct arpq_entry {
@@ -104,8 +108,6 @@ struct frame_t {
     struct sr_arphdr *arp_header; //pointer to arp header--NULL if not ARP
     struct icmp_hdr *icmp_header; //pointer to ICMP header--NULL if not ICMP
     int in_or_out; //flag for whether this is an incoming or outgoing packet
-#define IN 0
-#define OUT 1
     uint8_t from_MAC[ETHER_ADDR_LEN];
     uint8_t to_MAC[ETHER_ADDR_LEN];
     int MAC_set; //flag for whether MAC has been determined yet, for outgoing packets
@@ -121,6 +123,26 @@ static struct arp_cache sr_arp_cache = {0, 0};
 
 static struct arp_queue sr_arp_queue = {0, 0};
 
+
+/*--------------------------------------------------------------------- 
+ * Method: get_interface
+ *
+ *---------------------------------------------------------------------*/
+static struct sr_if *get_interface(struct sr_instance *sr, const char *if_name)
+{
+    assert(sr);
+    assert(if_name);
+    
+    struct sr_if *iface = sr->if_list;
+    
+    while(iface)
+    {
+        if(!strncmp(iface->name, if_name, sr_IFACE_NAMELEN))
+            return iface;
+        iface = iface->next;
+    }
+    return NULL;
+}
 
 /*---------------------------------------------------------------------
  * Method: static struct frame_t *create_frame_t(struct sr_instance *sr, 
@@ -140,9 +162,9 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
     
     assert(new_frame->frame);
     
-    memcpy(new_frame, frame, len); //we make a copy of the frame so we can keep it around in queue, etc
+    memcpy(new_frame->frame, frame, len); //we make a copy of the frame so we can keep it around in queue, etc
     new_frame->len = len;
-    new_frame->ether_header = (struct sr_ethernet_hdr *)frame;
+    new_frame->ether_header = (struct sr_ethernet_hdr *)new_frame->frame;
     new_frame->in_or_out = IN;
     new_frame->MAC_set = 1;
     memcpy(new_frame->from_MAC, new_frame->ether_header->ether_shost, ETHER_ADDR_LEN);
@@ -152,7 +174,7 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
     new_frame->ip_hl = 0;
     
     if (ntohs(new_frame->ether_header->ether_type)==ETHERTYPE_IP){
-        new_frame->ip_header = (struct ip *)(new_frame->ether_header + sizeof(struct ip));
+        new_frame->ip_header = (struct ip *)(new_frame->ether_header + sizeof(struct sr_ethernet_hdr));
         new_frame->arp_header = NULL;
         
         assert (new_frame->ip_header);
@@ -165,7 +187,7 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
             new_frame->icmp_header = (struct icmp_hdr *)(new_frame->ip_header + new_frame->ip_hl);
     }
     else if(ntohs(new_frame->ether_header->ether_type)==ETHERTYPE_ARP){
-        new_frame->arp_header = (struct sr_arphdr *) (new_frame->ether_header + sizeof(struct sr_arphdr));
+        new_frame->arp_header = (struct sr_arphdr *) (new_frame->ether_header + sizeof(struct sr_ethernet_hdr));
         new_frame->ip_header = NULL;
         
         assert(new_frame->arp_header);
@@ -179,9 +201,36 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
         free(new_frame);
         return NULL;
     }
-    new_frame->iface = get_interface(sr, if_name); //TODO: Create this function--just like if_ip_search, but by MAC address
+    new_frame->iface = get_interface(sr, if_name);
     
     return new_frame;
+}
+
+/*---------------------------------------------------------------------
+ * Method: void destroy_frame_t(struct frame_t *frame)
+ *
+ * Memory cleanup
+ *----------------------------------------------------------------------*/
+void destroy_frame_t(struct frame_t *frame){
+    free(frame->frame);
+    free(frame);
+}
+
+/*---------------------------------------------------------------------
+ * Method: void destroy_arpq_entry(struct arpq_entry *entry)
+ *
+ * Memory cleanup--assuming it's no longer linked to things
+ *----------------------------------------------------------------------*/
+void destroy_arpq_entry(struct arpq_entry *entry){
+    struct queued_packet *packet = entry->arpq_packets.first;
+    struct queued_packet *nextpacket;
+    while (packet){
+        destroy_frame_t(packet->outgoing);
+        nextpacket = packet->next;
+        free(packet);
+        packet = nextpacket;
+    }
+    free(entry);
 }
 
 /*--------------------------------------------------------------------- 
@@ -214,9 +263,9 @@ void sr_init(struct sr_instance* sr)
  *---------------------------------------------------------------------*/
 static void compute_icmp_checksum(struct frame_t *frame)
 {
-    struct sr_icmphdr *icmp_header = frame->icmp_header;
+    struct icmp_hdr *icmp_header = frame->icmp_header;
     uint8_t *packet = (uint8_t *) icmp_header;
-    int len = frame->len - sizeof(struct sr_ethernet_hdr) - frame->ip_hdr->ip_hl * WORD_SIZE;
+    int len = frame->len - sizeof(struct sr_ethernet_hdr) - frame->ip_hl;
     
     if (!len%2) len++;
     
@@ -279,26 +328,6 @@ static struct sr_if *if_dst_check(struct sr_instance *sr, uint32_t ip)
     
     if (current_if) return current_if;
     
-    return NULL;
-}
-
-/*--------------------------------------------------------------------- 
- * Method: get_interface
- *
- *---------------------------------------------------------------------*/
-static struct sr_if *get_interface(struct sr_instance *sr, const char *if_name)
-{
-    assert(sr);
-    assert(if_name);
-    
-    struct sr_if *iface = sr->if_list;
-    
-    while(iface)
-    {
-        if(!strncmp(iface->name, if_name, sr_IFACE_NAMELEN))
-            return iface;
-        iface = iface->next;
-    }
     return NULL;
 }
 
@@ -430,408 +459,6 @@ static struct arpc_entry *arp_cache_add(struct arp_cache *cache, unsigned char *
     return entry;
 }
 
-/*--------------------------------------------------------------------- 
- * Method: arpq_entry_clear;
- *
- *---------------------------------------------------------------------*/
-static void arpq_entry_clear(struct sr_instance *sr,
-                             struct arp_queue *queue,
-                             struct arpq_entry *entry,
-                             unsigned char *d_ha)
-{
-    assert(sr);
-    assert(queue);
-    assert(entry);
-    assert(d_ha);
-    
-    struct frame_t *qpacket;
-    
-    while( qpacket = ((entry->arpq_packets).first) )
-    {
-        memcpy(qpacket->from_MAC, (entry->arpq_if)->addr, ETHER_ADDR_LEN);
-        memcpy(qpacket-to_MAC, d_ha, ETHER_ADDR_LEN);
-        
-        encapsulate(qpacket);
-        send_frame(qpacket); //TODO: write send_frame
-        
-        //struct ip *s_ip = (struct ip *) ( qpacket->packet + sizeof(struct sr_ethernet_hdr));
-        //s_ip->ip_sum = 0;
-        //s_ip->ip_sum = compute_checksum( (uint16_t *) s_ip, s_ip->ip_hl * WORD_SIZE);
-        
-        if( !((entry->arpq_packets).first = qpacket->next) )
-            (entry->arpq_packets).last = NULL;
-        
-        free(qpacket);
-    }
-    
-    if (entry->prev) (entry->prev)->next = entry->next;
-    else queue->first = entry->next;
-    
-    if (entry->next) (entry->next)->prev = entry->prev;
-    else queue->last = entry->prev;
-    
-    free(entry);
-    return;
-}
-
-/*--------------------------------------------------------------------- 
- * Method: arp_create;
- *
- *---------------------------------------------------------------------*/
-static void arp_create(incoming, outgoing, struct sr_if *iface, unsigned short op)
-{
-    assert(outgoing);
-    
-    //create and fill out frame_t
-    outgoing = malloc(sizeof(struct frame_t));
-    outgoing->len = sizeof(sr_ethernet_hdr) + sizeof(sr_arphdr);
-    outgoing->frame = malloc(len);
-    outgoing->ether_header = (struct sr_ethernet_hdr *)outgoing->frame;
-    outgoing->arp_header = (struct sr_arphdr *)(outgoing->frame + sizeof(struct sr_ethernet_hdr));
-    outgoing->ip_header = NULL;
-    outgoing->icmp_header = NULL;
-    outgoing->ip_len = 0;
-    outgoing->ip_hl = 0;
-    outgoing->iface = iface;
-    outgoing->MAC_set = 1;
-    
-    //fill out constant parts of arp_header
-    outgoing->arp_header->ar_hrd = htons(1);
-    outgoing->arp_header->ar_pro = htons(ETHERTYPE_IP);
-    outgoing->arp_header->ar_hln = ETHER_ADDR_LEN;
-    outgoing->arp_header->ar_pln = 4;
-    
-    //fill out MAC and IP addresses
-    memcpy(outgoing->arp_header->ar_tha, incoming->from_MAC, ETHER_ADDR_LEN); //this will give nonsense for an arp request which is fine--unless we need a broadcast address, but I don't think so 
-    memcpy(outgoing->arp_header->ar_sha, iface->addr, ETHER_ADDR_LEN);
-    memcpy(outgoing->from_MAC, iface->addr, ETHER_ADDR_LEN);
-    
-    if (op == ARP_REQUEST){
-        outgoing->arp_header->ar_tip = htonl(incoming->to_ip); //incoming is an IP datagram, we want to know MAC of IP it's sending to
-        outgoing->to_ip = incoming->to_ip;
-        memset(outgoing->to_MAC, 0xFF, ETHER_ADDR_LEN); //set outgoing MAC to broadcast address 
-    }
-    else{
-        outgoing->arp_header->ar_tip = htonl(incoming->from_ip); //incoming is an ARP request, we want to send back to that IP
-        outgoing->to_ip = incoming->from_ip;
-    }
-    
-    outgoing->arp_header->ar_sip = htonl(outgoing->iface->ip);
-    outgoing->from_ip = outgoing->iface->ip;
-    
-    outgoing->arp_header->ar_op = htons(op);
-    
-    encapsulate(outgoing);
-    
-    return;
-}
-                                 
-
-/*--------------------------------------------------------------------- 
- * Method: arpq_add_packet
- *
- *---------------------------------------------------------------------*/
-static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, uint8_t *packet /* this can be a frame_t */, unsigned p_len /*, char *if_name*/)
-{
-    assert(entry);
-    assert(packet);
-    //assert(if_name);
-    
-    struct queued_packet *new_packet;
-    
-    if(new_packet = (struct queued_packet *)malloc(sizeof(struct queued_packet)))
-    {
-        new_packet->packet = (uint8_t *)malloc(p_len);
-        new_packet->len = p_len;
-        
-        //memcpy(new_packet->icmp_if_name, if_name, sr_IFACE_NAMELEN);
-        memcpy(new_packet->packet, packet, p_len);
-        
-        new_packet->next = NULL;
-        
-        if( (entry->arpq_packets).first) ((entry->arpq_packets).last)->next = new_packet;
-        else (entry->arpq_packets).first = new_packet;
-        (entry->arpq_packets).last = new_packet;
-    }
-    return new_packet;
-}
-
-/*--------------------------------------------------------------------- 
- * Method: arpq_add_entry
- *
- *---------------------------------------------------------------------*/
-static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *iface, /* char *icmp_if, */uint8_t *packet /* this can be a frame_t */, uint32_t ip, unsigned len)
-{
-    assert(queue);
-    assert(iface);
-    //assert(icmp_if);
-    assert(packet);
-    
-    struct arpq_entry *new_entry;
-    
-    if(new_entry = (struct arpq_entry *)malloc(sizeof(struct arpq_entry)))
-    {
-        new_entry->arpq_if = iface;
-        new_entry->arpq_ip = ip;
-        (new_entry->arpq_packets).first = NULL;
-        (new_entry->arpq_packets).last = NULL;
-        
-        if(arpq_add_packet(new_entry, packet, len /*, icmp_if*/))
-        {
-            new_entry->arpq_num_reqs = 1;
-            new_entry->next = NULL;
-            new_entry->prev = queue->last;
-            
-            if (queue->first) (queue->last)->next = new_entry;
-            else queue->first = new_entry;
-            queue->last = new_entry;
-            
-            return new_entry;
-        }
-    }
-    return NULL;
-}
-/*---------------------------------------------------------------------
- * Method: arpq_packets_icmpsend(struct sr_instance *sr,
- *                               struct packetq *arpq_packets)
- * 
- * Send time_exceeded messages in response to all the packets in the packet queue
- *---------------------------------------------------------------------*/
-
-void arpq_packets_icmpsend(struct sr_instance *sr, struct packetq *arpq_packets){
-    struct queued_packet *current_packet = arpq_packets.first;
-    frame_t *ICMP_err;
-    
-    while(current_packet){
-        //get back old info so we can send it back the way it came
-        current_packet->outgoing->iface = current_packet->iface;
-        memcpy(current_packet->outgoing->from_MAC, current_packet->from_MAC, ETHER_ADDR_LEN);
-        
-        generate_icmp_error(current_packet->outgoing, ICMP_err, DEST_UNREACH, HOST_UNREACH);
-        
-        sr_send_packet(sr, (uint8_t *)current_packet->outgoing->frame, 
-                       current_packet->outgoing->len, 
-                       current_packet->iface);
-        
-        free(ICMP_err);
-        current_packet = current_packet->next;
-    }
-}
-
-/*--------------------------------------------------------------------- 
- * Method: arp_queue_flush
- *
- *---------------------------------------------------------------------*/
-static void arp_queue_flush(struct arp_queue *queue)
-{
-    assert(queue);
-    struct arpq_entry *entry = queue->first;
-    struct arpq_entry *temp = NULL;
-    
-    while(entry) {
-        if( time(NULL) - 1 > entry->arpq_last_req)
-        {
-            if(entry->arpq_num_reqs >= ARP_MAX_REQ) {
-                temp = entry;
-                arpq_packets_icmpsend(sr, &entry->arpq_packets); //TODO, this function does not exist
-            }
-            else if(arpreq_send()) //TODO, function to do a generic send
-                fprintf(stderr, "Packet send failed (ARP req)\n");
-        }
-        entry = entry->next;
-        
-        if(temp)
-        {
-            if (temp->prev) (temp->prev)->next = temp->next;
-            else queue->first = temp->next;
-            
-            if (temp->next) (temp->next)->prev = temp->prev;
-            else queue->last = temp->prev;
-            
-            free(temp);
-            temp = NULL;
-        }
-    }
-}
-
-/*--------------------------------------------------------------------- 
- * Method: arp_cache_flush
- *
- *---------------------------------------------------------------------*/
-static void arp_cache_flush(struct arp_cache *cache)
-{
-    assert(cache);
-    
-    struct arpc_entry *entry = cache->first;
-    struct arpc_entry *temp = NULL;
-    
-    while(entry) {
-        if( time() > entry->arpc_timeout)
-        {
-            if (entry->prev) (entry->prev)->next = entry->next;
-            else cache->first = entry->next;
-            
-            if (entry->next) (entry->next)->prev = entry->prev;
-            else cache->last = entry->prev;
-            
-            temp = entry;
-        }
-        entry = entry->next;
-        if(temp) {
-            free(temp);
-            temp = NULL;
-        }
-    }
-}
-
-/*---------------------------------------------------------------------
- * Method: void send_queued_packets(struct sr_instance *sr, struct arpq_entry *queue_entry, struct arpc_entry 
- * *cache_entry)
- *
- * Scope: Local
- *
- * This method sends out every packet queued in the given entry to the MAC address specified in the cache
- *--------------------------------------------------------------------*/
-
-void send_queued_packets(struct sr_instance *sr, struct arpq_entry *queue_entry, struct arpc_entry *cache_entry){
-    
-    void *send_frame;
-    
-    struct sr_if *iface = queue_entry->arpq_if;
-    
-    uint8_t dest_mac[ETHER_ADDR_LEN];
-    memcpy(dest_mac, cache_entry->arpc_mac, ETHER_ADDR_LEN);
-    
-    struct queued_packet *packet = (queue_entry->arpq_packets).first;
-    
-    while (packet){
-        encapsulate(iface, ETHERTYPE_IP, send_frame, packet->packet, packet->len, dest_mac);
-        sr_send_packet(sr, (uint8_t *)send_frame, sizeof(send_frame), (char *)iface);
-        free(send_frame);
-        packet = packet->next;
-    }
-}
-
-/*---------------------------------------------------------------------
- * Method: void send_queued_errors(struct sr_instance *sr, struct arpq_entry *queue_entry)
- *
- * sends ICMP host unreachable message in response to every packet in entry
- *---------------------------------------------------------------------*/
-void send_queued_errors(struct sr_instance *sr, struct arpq_entry *queue_entry){
-    struct queued_packet *packet = (queue_entry->packetq).first;
-    //AGH we need to include MAC address in queued_packet struct.
-    void *to_send;
-    while (packet){
-        generate_icmp_error(sr, packet->packet, to_send, DEST_UNREACH, HOST_UNREACH);
-        //encapsulate(
-        //sr_send_packet(
-        //free(to_send
-    }
-}
-
-/*--------------------------------------------------------------------- 
- * Method: void update_arp_queue(struct sr_instance *sr, struct arp_queue *queue, struct arp_cache *cache) 
- * 
- * time to deal with the queue
- *
- * 1) iterate through the queue
- *
- * 2) check whether there is now a reply in the ARP cache, and send everything for that entry if there is
- *
- * 3) if not, check whether stuff in the queue has timed out
- *  - if it has, max retrys?
- *  - clear it out if it has, set retry++ if we haven't, send another ARP request
- *  - if we clear it out, we need to send an ICMP host unreach message
- *
- * 4) if it hasn't timed out, just ignore it
- *--------------------------------------------------------------------*/
-void update_arp_queue(struct sr_instance *sr, struct arp_queue *queue, struct arp_cache *cache){
-    assert(queue);
-    struct arpq_entry *queue_entry = queue->first;
-    while (queue_entry){
-        
-        /* check whether there's a reply in the cache */
-        struct arpc_entry *cache_entry;
-        if (cache_entry = arp_cache_lookup(cache->first, queue_entry->arpq_ip)){
-            /* send everything in the packet queue */
-            send_queued_packets(sr, queue_entry, cache_entry);
-            arpq_entry_clear(sr, queue, queue_entry, cache_entry->arpc_mac);
-        }
-        else if (time(NULL) - queue_entry->arpq_last_req > ARP_REQUEST_TIMEOUT){
-           /* deal with timeouts */
-            if (queue_entry->arpq_num_reqs >= ARP_MAX_REQ){
-                send_queued_errors(sr, queue_entry);
-                arpq_entry_clear(sr, queue, queue_entry, cache_entry->arpc_mac);
-            }
-            else {
-                /* send out another ARP request */
-                void *request_frame;
-                struct sr_if *iface = queue_entry->arpq_if;
-                uint8_t broadcast[ETHER_ADDR_LEN]; //honestly this should be a global variable someplace
-                memset(broadcast, 0xFF, ETHER_ADDR_LEN);
-                struct sr_arphdr *request = malloc(sizeof(struct sr_arphdr));
-                arp_create(request, iface, queue_entry->arpq_ip, ARP_REQUEST);
-                encapsulate(iface, ETHERTYPE_ARP, request_frame, request, sizeof(struct sr_arphdr), broadcast);
-                sr_send_packet(sr, (uint8_t *)request_frame, sizeof(request_frame), (char *)iface);
-                queue_entry->arpq_num_reqs++;
-            }
-        }
-        queue_entry = queue_entry->next;
-    }
-}
-
-
-/*---------------------------------------------------------------------
- * Method: update_ip_hdr(struct sr_instance *sr, struct frame_t incoming,
- *                          struct frame_t outgoing)
- * Scope: Local
- * 
- * This method fills in the IP header and frame_t for outgoing based on the 
- * parameters given.
- *--------------------------------------------------------------------*/
-void update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, struct frame_t *outgoing){
-    assert(incoming);
-    //struct ip *recv_header = (struct ip *)recv_datagram;
-    //size_t ip_len = ntohs(recv_header->ip_len);
-    //size_t ip_header_len = recv_header->ip_hl * WORDTO16BIT;
-    //send_datagram = malloc(ip_len);
-    //struct ip *send_header = (struct ip *)send_datagram;
-    //memcpy(send_datagram, recv_datagram, ip_len);
-    
-    /* create and fill out frame_t */
-    outgoing = (struct frame_t *)malloc(sizeof(struct frame_t));
-    
-    assert(outgoing);
-    
-    outgoing->frame = malloc(incoming->len);
-    memcpy(outgoing->frame, incoming->frame, incoming->len);
-    
-    assert(outgoing->frame);
-    
-    outgoing->ether_header = (struct sr_ethernet_hdr *)outgoing->frame;
-    outgoing->ip_header = (struct ip *)(outgoing->frame + sizeof(struct sr_ethernet_hdr));
-    outgoing->arp_header = NULL;
-    outgoing->icmp_header = NULL; //maybe it's an ICMP packet, but we don't care
-    outgoing->in_or_out = IN;
-    outgoing->MAC_set = 0;
-    outgoing->from_ip = incoming->from_ip;
-    outgoing->to_ip = incoming->to_ip;
-    outgoing->ip_hl = incoming->ip_hl;
-    outgoing->len = incoming->len;
-    
-    //also needs to do routing table lookup and set iface
-    struct sr_rt *router_entry = rt_match(sr, incoming->to_ip);
-    outgoing->iface = get_interface(sr, router_entry->interface);
-    memcpy(outgoing->from_MAC, outgoing->iface->addr);
-    
-    //update TTL and checksum
-    outgoing->ip_header->ip_ttl--;
-    outgoing->ip_header->ip_sum = 0;
-    outgoing->ip_header->ip_sum = compute_ip_checksum(outgoing); //we want length in 16-bit words
-    
-    return;
-}
-
 /*---------------------------------------------------------------------
  * Method: ip_header_create(struct frame_t *outgoing)
  * Scope: Local
@@ -847,8 +474,12 @@ void ip_header_create(struct frame_t *outgoing)
     
     assert(send_header);
     
-    send_header->ip_v = htonl(4);
-    send_header->ip_hl = htonl(5);
+    //yeah, this is totally lame.
+    unsigned int four = 4;
+    unsigned int five = 5;
+    
+    send_header->ip_v = htonl(four);
+    send_header->ip_hl = htonl(five);
     send_header->ip_tos = 0;
     send_header->ip_id = 0;
     send_header->ip_off = 0;
@@ -858,7 +489,7 @@ void ip_header_create(struct frame_t *outgoing)
     send_header->ip_src.s_addr = htonl(outgoing->to_ip);
     send_header->ip_dst.s_addr = htonl(outgoing->to_ip);
     send_header->ip_sum = 0;
-    send_header->ip_sum = compute_ip_checksum(outgoing); 
+    compute_ip_checksum(outgoing); 
     return;
 }
 
@@ -889,7 +520,7 @@ void generate_icmp_echo(struct frame_t *incoming, struct frame_t *outgoing){
     outgoing->ether_header = (struct sr_ethernet_hdr *)outgoing->frame;
     outgoing->ip_header = (struct ip *)(outgoing->frame + sizeof(struct sr_ethernet_hdr));
     outgoing->arp_header = NULL;
-
+    
     assert(outgoing->ip_header);
     
     outgoing->icmp_header = (struct icmp_hdr *)(outgoing->ip_header + outgoing->ip_hl);
@@ -909,15 +540,15 @@ void generate_icmp_echo(struct frame_t *incoming, struct frame_t *outgoing){
     
     
     /* fill out icmp header */
-    outgoing->icmp_header->icmp_type == ECHO_REPLY;
+    outgoing->icmp_header->icmp_type = ECHO_REPLY;
+    outgoing->icmp_header->icmp_sum = 0;
     
     /* fill out other headers too */
-    icmp_header->icmp_sum = compute_icmp_checksum(outgoing); //again, this will need updating, ideally it'll only take outgoing as argument
+    compute_icmp_checksum(outgoing); //again, this will need updating, ideally it'll only take outgoing as argument
     
     ip_header_create(outgoing); //this function only create headers for ICMP packets 
     encapsulate(outgoing); //memory and such already allocated, just fills in fields appropriately
     
-    free(checksum_copy);
     return;
     
 }
@@ -978,18 +609,339 @@ void generate_icmp_error(struct frame_t *incoming, struct frame_t *outgoing, uin
     outgoing->icmp_header->icmp_type = icmp_type;
     outgoing->icmp_header->icmp_code = icmp_code;
     outgoing->icmp_header->icmp_unused = 0;
+    outgoing->icmp_header->icmp_sum = 0;
     
     /* copy data into header: packet includes IP header, ICMP header, and beginning of original packet */
     void *icmp_data = outgoing->icmp_header + sizeof(outgoing->icmp_header);
     assert(icmp_data);
     memcpy(icmp_data, incoming->ip_header, icmp_data_len);
-
-    compute_checksum(outgoing);
+    
+    compute_icmp_checksum(outgoing);
     ip_header_create(outgoing);
     encapsulate(outgoing);
     return; 
     
 }
+
+/*--------------------------------------------------------------------- 
+ * Method: arpq_entry_clear;
+ *
+ *---------------------------------------------------------------------*/
+static void arpq_entry_clear(struct sr_instance *sr,
+                             struct arp_queue *queue,
+                             struct arpq_entry *entry,
+                             unsigned char *d_ha)
+{
+    assert(sr);
+    assert(queue);
+    assert(entry);
+    assert(d_ha);
+    
+    struct queued_packet *qpacket;
+    
+    while( qpacket = ((entry->arpq_packets).first) )
+    {
+        struct frame_t *outgoing = qpacket->outgoing;
+        memcpy(outgoing->from_MAC, (entry->arpq_if)->addr, ETHER_ADDR_LEN);
+        memcpy(outgoing->to_MAC, d_ha, ETHER_ADDR_LEN);
+        
+        encapsulate(outgoing);
+        sr_send_packet(sr, (uint8_t *)outgoing->frame, outgoing->len, outgoing->iface->name); 
+        
+        //struct ip *s_ip = (struct ip *) ( qpacket->packet + sizeof(struct sr_ethernet_hdr));
+        //s_ip->ip_sum = 0;
+        //s_ip->ip_sum = compute_checksum( (uint16_t *) s_ip, s_ip->ip_hl * WORD_SIZE);
+        
+        if( !((entry->arpq_packets).first = qpacket->next) ){
+            (entry->arpq_packets).first = NULL;
+            (entry->arpq_packets).last = NULL; //need to set both so destroy_arpq_entry works right
+        }
+        
+        destroy_frame_t(outgoing);
+        free(qpacket);
+    }
+    
+    if (entry->prev) (entry->prev)->next = entry->next;
+    else queue->first = entry->next;
+    
+    if (entry->next) (entry->next)->prev = entry->prev;
+    else queue->last = entry->prev;
+    
+    destroy_arpq_entry(entry);
+    return;
+}
+
+/*--------------------------------------------------------------------- 
+ * Method: arp_create;
+ *
+ *---------------------------------------------------------------------*/
+static void arp_create(struct frame_t *incoming, struct frame_t *outgoing, struct sr_if *iface, unsigned short op)
+{
+    assert(outgoing);
+    
+    //create and fill out frame_t
+    outgoing = malloc(sizeof(struct frame_t));
+    outgoing->len = sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arphdr);
+    outgoing->frame = malloc(outgoing->len);
+    outgoing->ether_header = (struct sr_ethernet_hdr *)outgoing->frame;
+    outgoing->arp_header = (struct sr_arphdr *)(outgoing->frame + sizeof(struct sr_ethernet_hdr));
+    outgoing->ip_header = NULL;
+    outgoing->icmp_header = NULL;
+    outgoing->ip_len = 0;
+    outgoing->ip_hl = 0;
+    outgoing->iface = iface;
+    outgoing->MAC_set = 1;
+    
+    //fill out constant parts of arp_header
+    outgoing->arp_header->ar_hrd = htons(1);
+    outgoing->arp_header->ar_pro = htons(ETHERTYPE_IP);
+    outgoing->arp_header->ar_hln = ETHER_ADDR_LEN;
+    outgoing->arp_header->ar_pln = 4;
+    
+    //fill out MAC and IP addresses
+    memcpy(outgoing->arp_header->ar_tha, incoming->from_MAC, ETHER_ADDR_LEN); //this will give nonsense for an arp request which is fine--unless we need a broadcast address, but I don't think so 
+    memcpy(outgoing->arp_header->ar_sha, iface->addr, ETHER_ADDR_LEN);
+    memcpy(outgoing->from_MAC, iface->addr, ETHER_ADDR_LEN);
+    
+    if (op == ARP_REQUEST){
+        outgoing->arp_header->ar_tip = htonl(incoming->to_ip); //incoming is an IP datagram, we want to know MAC of IP it's sending to
+        outgoing->to_ip = incoming->to_ip;
+        memset(outgoing->to_MAC, 0xFF, ETHER_ADDR_LEN); //set outgoing MAC to broadcast address 
+    }
+    else{
+        outgoing->arp_header->ar_tip = htonl(incoming->from_ip); //incoming is an ARP request, we want to send back to that IP
+        outgoing->to_ip = incoming->from_ip;
+    }
+    
+    outgoing->arp_header->ar_sip = htonl(outgoing->iface->ip);
+    outgoing->from_ip = outgoing->iface->ip;
+    
+    outgoing->arp_header->ar_op = htons(op);
+    
+    encapsulate(outgoing);
+    
+    return;
+}
+                                 
+
+/*--------------------------------------------------------------------- 
+ * Method: arpq_add_packet
+ *
+ *---------------------------------------------------------------------*/
+static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, struct frame_t *packet, unsigned p_len, uint8_t old_MAC[ETHER_ADDR_LEN], struct sr_if *old_iface)
+{
+    assert(entry);
+    assert(packet);
+    //assert(if_name);
+    entry->arpq_num_reqs++; //this only gets called when we're about to send an ARP request
+    
+    struct queued_packet *new_packet;
+    
+    if(new_packet = (struct queued_packet *)malloc(sizeof(struct queued_packet)))
+    {
+        new_packet->outgoing = malloc(sizeof(struct frame_t));
+        memcpy(new_packet->outgoing, packet, sizeof(struct frame_t));
+        new_packet->outgoing->frame = malloc(packet->len);
+        memcpy(new_packet->outgoing->frame, packet->frame, packet->len);
+        new_packet->from_iface = old_iface;
+        memcpy(new_packet->from_MAC,  old_MAC, ETHER_ADDR_LEN);
+        
+        
+        new_packet->next = NULL;
+        
+        if( (entry->arpq_packets).first) ((entry->arpq_packets).last)->next = new_packet;
+        else (entry->arpq_packets).first = new_packet;
+        (entry->arpq_packets).last = new_packet;
+    }
+    return new_packet;
+}
+
+/*--------------------------------------------------------------------- 
+ * Method: arpq_add_entry
+ *
+ *---------------------------------------------------------------------*/
+static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *iface, struct frame_t *packet, uint32_t ip, unsigned len, uint8_t old_MAC[ETHER_ADDR_LEN], struct sr_if *old_iface)
+{
+    assert(queue);
+    assert(iface);
+    //assert(icmp_if);
+    assert(packet);
+    
+    struct arpq_entry *new_entry;
+    
+    if(new_entry = (struct arpq_entry *)malloc(sizeof(struct arpq_entry)))
+    {
+        new_entry->arpq_if = iface;
+        new_entry->arpq_ip = ip;
+        (new_entry->arpq_packets).first = NULL;
+        (new_entry->arpq_packets).last = NULL;
+        
+        if(arpq_add_packet(new_entry, packet, len, old_MAC, old_iface))
+        {
+            new_entry->arpq_num_reqs = 0;
+            new_entry->next = NULL;
+            new_entry->prev = queue->last;
+            
+            if (queue->first) (queue->last)->next = new_entry;
+            else queue->first = new_entry;
+            queue->last = new_entry;
+            
+            return new_entry;
+        }
+    }
+    return NULL;
+}
+/*---------------------------------------------------------------------
+ * Method: arpq_packets_icmpsend(struct sr_instance *sr,
+ *                               struct packetq *arpq_packets)
+ * 
+ * Send time_exceeded messages in response to all the packets in the packet queue
+ *---------------------------------------------------------------------*/
+
+void arpq_packets_icmpsend(struct sr_instance *sr, struct packetq *arpq_packets){
+    struct queued_packet *current_packet = arpq_packets->first;
+    struct frame_t *ICMP_err;
+    
+    while(current_packet){
+        //get back old info so we can send it back the way it came
+        current_packet->outgoing->iface = current_packet->from_iface;
+        memcpy(current_packet->outgoing->from_MAC, current_packet->from_MAC, ETHER_ADDR_LEN);
+        
+        generate_icmp_error(current_packet->outgoing, ICMP_err, DEST_UNREACH, HOST_UNREACH);
+        
+        sr_send_packet(sr, (uint8_t *)current_packet->outgoing->frame, 
+                       current_packet->outgoing->len, 
+                       current_packet->from_iface->name);
+        
+        destroy_frame_t(ICMP_err);
+        current_packet = current_packet->next;
+    }
+}
+
+/*--------------------------------------------------------------------- 
+ * Method: arp_queue_flush
+ *
+ *---------------------------------------------------------------------*/
+static void arp_queue_flush(struct sr_instance *sr, struct arp_queue *queue)
+{
+    assert(queue);
+    struct arpq_entry *entry = queue->first;
+    struct arpq_entry *temp = NULL;
+    struct frame_t *arp_req;
+    
+    while(entry) {
+        if( time(NULL) - 1 > entry->arpq_last_req)
+        {
+            if(entry->arpq_num_reqs >= ARP_MAX_REQ) {
+                temp = entry;
+                arpq_packets_icmpsend(sr, &entry->arpq_packets);
+            }
+            else {
+                struct queued_packet *old_packet = entry->arpq_packets.first;
+                arp_create(old_packet->outgoing, arp_req, old_packet->from_iface, ARP_REQUEST);
+                sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->from_iface->name);
+                destroy_frame_t(arp_req);
+            }
+        }
+        entry = entry->next;
+        
+        if(temp)
+        {
+            if (temp->prev) (temp->prev)->next = temp->next;
+            else queue->first = temp->next;
+            
+            if (temp->next) (temp->next)->prev = temp->prev;
+            else queue->last = temp->prev;
+            
+            free(temp);
+            temp = NULL;
+        }
+    }
+}
+
+/*--------------------------------------------------------------------- 
+ * Method: arp_cache_flush
+ *
+ *---------------------------------------------------------------------*/
+static void arp_cache_flush(struct arp_cache *cache)
+{
+    assert(cache);
+    
+    struct arpc_entry *entry = cache->first;
+    struct arpc_entry *temp = NULL;
+    
+    while(entry) {
+        if( time(NULL) > entry->arpc_timeout)
+        {
+            if (entry->prev) (entry->prev)->next = entry->next;
+            else cache->first = entry->next;
+            
+            if (entry->next) (entry->next)->prev = entry->prev;
+            else cache->last = entry->prev;
+            
+            temp = entry;
+        }
+        entry = entry->next;
+        if(temp) {
+            free(temp);
+            temp = NULL;
+        }
+    }
+}
+
+
+/*---------------------------------------------------------------------
+ * Method: update_ip_hdr(struct sr_instance *sr, struct frame_t incoming,
+ *                          struct frame_t outgoing)
+ * Scope: Local
+ * 
+ * This method fills in the IP header and frame_t for outgoing based on the 
+ * parameters given.
+ *--------------------------------------------------------------------*/
+void update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, struct frame_t *outgoing){
+    assert(incoming);
+    //struct ip *recv_header = (struct ip *)recv_datagram;
+    //size_t ip_len = ntohs(recv_header->ip_len);
+    //size_t ip_header_len = recv_header->ip_hl * WORDTO16BIT;
+    //send_datagram = malloc(ip_len);
+    //struct ip *send_header = (struct ip *)send_datagram;
+    //memcpy(send_datagram, recv_datagram, ip_len);
+    
+    /* create and fill out frame_t */
+    outgoing = (struct frame_t *)malloc(sizeof(struct frame_t));
+    
+    assert(outgoing);
+    
+    outgoing->frame = malloc(incoming->len);
+    memcpy(outgoing->frame, incoming->frame, incoming->len);
+    
+    assert(outgoing->frame);
+    
+    outgoing->ether_header = (struct sr_ethernet_hdr *)outgoing->frame;
+    outgoing->ip_header = (struct ip *)(outgoing->frame + sizeof(struct sr_ethernet_hdr));
+    outgoing->arp_header = NULL;
+    outgoing->icmp_header = NULL; //maybe it's an ICMP packet, but we don't care
+    outgoing->in_or_out = IN;
+    outgoing->MAC_set = 0;
+    outgoing->from_ip = incoming->from_ip;
+    outgoing->to_ip = incoming->to_ip;
+    outgoing->ip_hl = incoming->ip_hl;
+    outgoing->len = incoming->len;
+    
+    //also needs to do routing table lookup and set iface
+    struct sr_rt *router_entry = rt_match(sr, incoming->to_ip);
+    outgoing->iface = get_interface(sr, router_entry->interface);
+    memcpy(outgoing->from_MAC, outgoing->iface->addr, ETHER_ADDR_LEN);
+    outgoing->ip_header->ip_sum = 0;
+    
+    //update TTL and checksum
+    outgoing->ip_header->ip_ttl--;
+    outgoing->ip_header->ip_sum = 0;
+    compute_ip_checksum(outgoing); //we want length in 16-bit words
+    
+    return;
+}
+
 
 /*---------------------------------------------------------------------
  * Method: sr_handlepacket(uint8_t* p,char* interface)
@@ -1019,31 +971,20 @@ void sr_handlepacket(struct sr_instance* sr,
     
     printf("*** -> Received packet of length %d \n",len);
     
-    //struct sr_ethernet_hdr *recv_frame = (struct sr_ethernet_hdr *)packet;
-    //void *send_frame;
-    //uint8_t dest_mac[ETHER_ADDR_LEN];
-    //uint16_t ether_prot = ETHERTYPE_IP;
-    //void *recv_datagram;    //a pointer to the incoming IP datagram/ARP packet, may or may not need its own memory
-    //void *send_datagram;    //a pointer to the outgoing IP datagram/ARP packet, gets its own memory
     struct sr_if *iface;
     
-    //recv_datagram = packet + sizeof(struct sr_ethernet_hdr);
     struct frame_t *incoming = create_frame_t(sr, packet, len, interface);
-    struct frame_t *outgoing;
+    struct frame_t *outgoing = NULL;
     
     /* First, deal with ARP cache timeouts */
-    arp_cache_flush(sr_arp_cache);
+    arp_cache_flush(&sr_arp_cache);
     
     /* Do we only need to cache ARP replies, or src MAC/IP on regular IP packets too, etc? */
     /* Also, do we need to worry about fragmentation? */
     
     /* Then actually handle the packet */
-    /* Start by determining protocol and stripping off the ethernet frame */
+    /* Start by determining protocol */
     if (incoming->ip_header){
-        
-        /* Strip ethernet header off of packet */
-        //struct ip *recv_hdr = (struct ip *)recv_datagram;
-        //size_t ip_header_len = recv_datagram->ip_hl * WORD_SIZE;
         
         compute_ip_checksum(incoming);
         
@@ -1053,58 +994,56 @@ void sr_handlepacket(struct sr_instance* sr,
             return;
         }
         
-        /* Check the TTL */
-        /*if( (recv_datagram->ip_ttl -= 1) == 0) //this branching is incorrect. We only drop it it's NOT for us and TTL is ALREADY 0.
-        {
-            if (recv_datagram->ip_p == IPPROTO_ICMP) {
-                struct icmp_hdr *icmp_header = (struct icmp_hdr*) (packet + sizeof(struct sr_ethernet_hdr) + ip_header_len);
-                if (icmp_header->icmp_type == ICMP_UNREACH || icmp_header->icmp_type == ICMP_TTL)
-                    return;
-            }
-        }
-        */
+
         /* Are we the destination? */
         if (iface = if_dst_check(sr, incoming->to_ip)){  //we could change this to just take incoming and then get to_ip
+            printf("received IP datagram\n");
             /* Is this an ICMP packet? */
-            if (new_frame->icmp_header)
-                if(new_frame->icmp_header->icmp_type == ECHO_REQUEST)
+            if (incoming->icmp_header){
+                printf("received ICMP datagram\n");
+                if(incoming->icmp_header->icmp_type == ECHO_REQUEST){
                     generate_icmp_echo(incoming, outgoing); 
-            else generate_icmp_error(incoming, outgoing, DEST_UNREACH, PORT_UNREACH);
-            //we're just returning to sender, so just use src mac
-            //memcpy(dest_mac, recv_frame->ether_shost, ETHER_ADDR_LEN * sizeof(uint8_t)); //fill in dest_mac with src from recv_frame,
+                    printf("received ICMP echo request");
+                }
+            }
+            else{
+                generate_icmp_error(incoming, outgoing, DEST_UNREACH, PORT_UNREACH);
+                printf("A packet for me! Flattering, but wrong.\n");
+            }
         }
         else {
             /* Has it timed out? */
-            if (ntohl(recv_hdr->ip_ttl) <= 0){
+            if (incoming->ip_header->ip_ttl <= 0){
                 generate_icmp_error(incoming, outgoing, TIME_EXCEEDED, TIME_INTRANSIT);
+                printf("Slowpoke. TTL exceeded.\n");
             }
             else {
-                //uint32_t send_ip = (recv_hdr->ip_dst).s_addr;
+
                 /* update and forward packet; if necessary, add it to queue */
                 struct arpc_entry *incache;
-                //send_datagram is just a copy of recv_datagram with header updated; call to routing table lookup and checksum will be in this function
-                //also sets iface
-                update_ip_hdr(sr, incoming, outgoing); 
+
+                update_ip_hdr(sr, incoming, outgoing);
+                printf("packet to forward");
                 
                 incache = arp_cache_lookup(sr_arp_cache.first, outgoing->to_ip);
                 
                 
                 if (!incache){
                     
-                    if (arp_queue_lookup(sr_arp_queue.first, send_ip)){ //if we've already sent an ARP request about this IP
-                        arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC); 
+                    if (arp_queue_lookup(sr_arp_queue.first, outgoing->to_ip)){ //if we've already sent an ARP request about this IP
+                        arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC, incoming->iface); 
                     }
-                    else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC);
+                    else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC, incoming->iface);
+                    struct sr_if *out_interface = outgoing->iface;
                 
-                    frame_destroy(outgoing); //TODO: create this function
+                    destroy_frame_t(outgoing);
                     
                     /* make ARP request */
-                    //send_datagram = malloc(sizeof(struct sr_arphdr));
-                    arp_create(outgoing, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram--still need to write this
-                    //memset(dest_mac, 0xFF, ETHER_ADDR_LEN); //set dest mac to broadcast address
-                    //ether_prot = ETHERTYPE_ARP;
+                    arp_create(incoming, outgoing, out_interface, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram 
+                    printf("sending ARP request\n");
                 }
                 else{
+                    printf("got the MAC, can actually send this packet\n");
                     memcpy(outgoing->to_MAC, incache->arpc_mac, ETHER_ADDR_LEN);
                     encapsulate(outgoing);
                 }
@@ -1113,6 +1052,8 @@ void sr_handlepacket(struct sr_instance* sr,
     }
     else if ( incoming->arp_header )
     {
+        printf("received ARP packet\n");
+        
         struct sr_arphdr *arp_header = incoming->arp_header;
         
         if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_ARP)
@@ -1124,6 +1065,7 @@ void sr_handlepacket(struct sr_instance* sr,
         if( arpc_ent = arp_cache_lookup(sr_arp_cache.first, arp_header->ar_sip) )
         {
             arp_cache_update(arpc_ent, arp_header->ar_sha);
+            printf("updated cache\n");
             in_cache = 1;
         }
         
@@ -1139,30 +1081,20 @@ void sr_handlepacket(struct sr_instance* sr,
             }
             else perror("ARP request not added to cache");
         }
-        if( ntohs(arp_header->ar_op == ARP_REQUEST) )
-        {
-            arp_create( arp_header, target_if, arp_header->ar_sip, ARP_REPLY);
-            /* sr_send_packet ? */
-            ether_prot = ETHERTYPE_ARP;
+        if( ntohs(arp_header->ar_op) == ARP_REQUEST ){
+            arp_create(incoming, outgoing, incoming->iface, ARP_REPLY);
+            printf("created ARP reply\n");
         }
     }
-
-    
-        
     else perror("Unknown protocol");
         
     //encapsulate and send datagram, if appropriate
-    if (send_datagram != NULL) {
-        size_t datagram_size;
-        if (ether_prot == ETHERTYPE_IP)
-            datagram_size = ((struct ip *)send_datagram)->ip_len;
-        else
-            datagram_size = sizeof(struct sr_arphdr);
-        encapsulate(iface, ether_prot, send_frame, send_datagram, datagram_size, dest_mac);
-        sr_send_packet(sr, (uint8_t *)send_frame, sizeof(send_frame), (char *) iface);
+    if (outgoing != NULL){ 
+        sr_send_packet(sr, (uint8_t *)outgoing->frame, outgoing->len, outgoing->iface->name);
+        printf("sent packet of length %d\n", outgoing->len);
     }
     
-    arp_queue_flush(sr_arp_queue);
+    arp_queue_flush(sr, &sr_arp_queue);
     
     
 }/* end sr_handlepacket */
