@@ -521,13 +521,13 @@ void ip_header_create(struct frame_t *outgoing)
  * as an argument and returns an ICMP echo reply.
  *---------------------------------------------------------------------*/
 
-void generate_icmp_echo(struct frame_t *incoming, struct frame_t *outgoing){
+static struct frame_t *generate_icmp_echo(struct frame_t *incoming){
     
     assert(incoming);
     
     
     /* create and fill out frame_t */
-    outgoing = malloc(sizeof(struct frame_t));
+    struct frame_t *outgoing = malloc(sizeof(struct frame_t));
     
     assert(outgoing);
     
@@ -568,7 +568,7 @@ void generate_icmp_echo(struct frame_t *incoming, struct frame_t *outgoing){
     ip_header_create(outgoing); //this function only create headers for ICMP packets 
     encapsulate(outgoing); //memory and such already allocated, just fills in fields appropriately
     
-    return;
+    return outgoing;
     
 }
 
@@ -581,7 +581,7 @@ void generate_icmp_echo(struct frame_t *incoming, struct frame_t *outgoing){
  * for it according to the given type and code.
  *---------------------------------------------------------------------*/
 
-void generate_icmp_error(struct frame_t *incoming, struct frame_t *outgoing, uint16_t icmp_type, uint16_t icmp_code){
+static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t icmp_type, uint16_t icmp_code){
     
     assert (incoming);
     
@@ -595,7 +595,7 @@ void generate_icmp_error(struct frame_t *incoming, struct frame_t *outgoing, uin
     size_t icmp_data_len = incoming->ip_hl + 2 * sizeof(uint32_t);      //length of echo data, in bytes
     
     /* create and fill out frame_t */
-    outgoing = malloc(sizeof(struct frame_t));
+    struct frame_t *outgoing = malloc(sizeof(struct frame_t));
     
     assert(outgoing);
     
@@ -638,7 +638,7 @@ void generate_icmp_error(struct frame_t *incoming, struct frame_t *outgoing, uin
     compute_icmp_checksum(outgoing);
     ip_header_create(outgoing);
     encapsulate(outgoing);
-    return; 
+    return outgoing; 
     
 }
 
@@ -735,6 +735,7 @@ static struct frame_t *arp_create(struct sr_instance *sr, struct frame_t *incomi
     else{
         outgoing->arp_header->ar_tip = incoming->from_ip; //incoming is an ARP request, we want to send back to that IP
         outgoing->to_ip = incoming->from_ip;
+        memset(outgoing->to_MAC, incoming->from_MAC, ETHER_ADDR_LEN);
     }
     
     outgoing->arp_header->ar_sip = outgoing->iface->ip;
@@ -832,7 +833,7 @@ void arpq_packets_icmpsend(struct sr_instance *sr, struct packetq *arpq_packets)
         current_packet->outgoing->iface = current_packet->from_iface;
         memcpy(current_packet->outgoing->from_MAC, current_packet->from_MAC, ETHER_ADDR_LEN);
         
-        generate_icmp_error(current_packet->outgoing, ICMP_err, DEST_UNREACH, HOST_UNREACH);
+        ICMP_err = generate_icmp_error(current_packet->outgoing, DEST_UNREACH, HOST_UNREACH);
         
         sr_send_packet(sr, (uint8_t *)current_packet->outgoing->frame, 
                        current_packet->outgoing->len, 
@@ -1027,19 +1028,19 @@ void sr_handlepacket(struct sr_instance* sr,
             if (incoming->icmp_header){
                 printf("received ICMP datagram\n");
                 if(incoming->icmp_header->icmp_type == ECHO_REQUEST){
-                    generate_icmp_echo(incoming, outgoing); 
+                    outgoing = generate_icmp_echo(incoming); 
                     printf("received ICMP echo request");
                 }
             }
             else{
-                generate_icmp_error(incoming, outgoing, DEST_UNREACH, PORT_UNREACH);
+                outgoing = generate_icmp_error(incoming, DEST_UNREACH, PORT_UNREACH);
                 printf("A packet for me! Flattering, but wrong.\n");
             }
         }
         else {
             /* Has it timed out? */
             if (incoming->ip_header->ip_ttl <= 0){
-                generate_icmp_error(incoming, outgoing, TIME_EXCEEDED, TIME_INTRANSIT);
+                outgoing = generate_icmp_error(incoming, TIME_EXCEEDED, TIME_INTRANSIT);
                 printf("Slowpoke. TTL exceeded.\n");
             }
             else {
