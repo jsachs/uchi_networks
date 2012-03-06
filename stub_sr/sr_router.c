@@ -66,15 +66,15 @@ struct arpc_entry {
 };
 
 struct queued_packet {
-    uint8_t *packet;
-    unsigned len;
-    //char     icmp_if_name[10 /* change later */];
+    uint8_t from_MAC[ETHER_ADDR_LEN];
+    struct  sr_if *from_iface;
+    struct  frame_t *outgoing;
     struct   queued_packet *next;
 };
 
 struct packetq {
-    struct queued_packet *first;
-    struct queued_packet *last;
+    struct frame_t *first;
+    struct frame_t *last;
 };
 
 struct arpq_entry {
@@ -115,7 +115,6 @@ struct frame_t {
     size_t len; //total size of frame
     size_t ip_hl; //in bytes!
     size_t ip_len; //these two zero unless it's an IP datagram
-    struct frame_t *next_frame; //for use in arp queue
 };
 
 static struct arp_cache sr_arp_cache = {0, 0};
@@ -592,6 +591,32 @@ static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *
     }
     return NULL;
 }
+/*---------------------------------------------------------------------
+ * Method: arpq_packets_icmpsend(struct sr_instance *sr,
+ *                               struct packetq *arpq_packets)
+ * 
+ * Send time_exceeded messages in response to all the packets in the packet queue
+ *---------------------------------------------------------------------*/
+
+void arpq_packets_icmpsend(struct sr_instance *sr, struct packetq *arpq_packets){
+    struct queued_packet *current_packet = arpq_packets.first;
+    frame_t *ICMP_err;
+    
+    while(current_packet){
+        //get back old info so we can send it back the way it came
+        current_packet->outgoing->iface = current_packet->iface;
+        memcpy(current_packet->outgoing->from_MAC, current_packet->from_MAC, ETHER_ADDR_LEN);
+        
+        generate_icmp_error(current_packet->outgoing, ICMP_err, DEST_UNREACH, HOST_UNREACH);
+        
+        sr_send_packet(sr, (uint8_t *)current_packet->outgoing->frame, 
+                       current_packet->outgoing->len, 
+                       current_packet->iface);
+        
+        free(ICMP_err);
+        current_packet = current_packet->next;
+    }
+}
 
 /*--------------------------------------------------------------------- 
  * Method: arp_queue_flush
@@ -608,12 +633,13 @@ static void arp_queue_flush(struct arp_queue *queue)
         {
             if(entry->arpq_num_reqs >= ARP_MAX_REQ) {
                 temp = entry;
-                arpq_packets_icmpsend(sr, &entry->arpq_packet); //TODO, this function does not exist
+                arpq_packets_icmpsend(sr, &entry->arpq_packets); //TODO, this function does not exist
             }
             else if(arpreq_send()) //TODO, function to do a generic send
                 fprintf(stderr, "Packet send failed (ARP req)\n");
         }
         entry = entry->next;
+        
         if(temp)
         {
             if (temp->prev) (temp->prev)->next = temp->next;
@@ -1005,10 +1031,8 @@ void sr_handlepacket(struct sr_instance* sr,
     struct frame_t *incoming = create_frame_t(sr, packet, len, interface);
     struct frame_t *outgoing;
     
-    /* First, deal with ARP cache and queue timeouts
-     * Which I will totally do when I have those data structures
-     * If we don't do these first we may have old entries in the cache.
-     */
+    /* First, deal with ARP cache timeouts */
+    arp_cache_flush(sr_arp_cache);
     
     /* Do we only need to cache ARP replies, or src MAC/IP on regular IP packets too, etc? */
     /* Also, do we need to worry about fragmentation? */
@@ -1068,9 +1092,9 @@ void sr_handlepacket(struct sr_instance* sr,
                 if (!incache){
                     
                     if (arp_queue_lookup(sr_arp_queue.first, send_ip)){ //if we've already sent an ARP request about this IP
-                        arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len); 
+                        arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC); 
                     }
-                    else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len);
+                    else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC);
                 
                     frame_destroy(outgoing); //TODO: create this function
                     
@@ -1138,22 +1162,7 @@ void sr_handlepacket(struct sr_instance* sr,
         sr_send_packet(sr, (uint8_t *)send_frame, sizeof(send_frame), (char *) iface);
     }
     
-    update_arp_queue(sr, &sr_arp_queue, &sr_arp_cache); 
-    
-    // time to deal with the queue
-    /*
-     * 1) iterate through the queue
-     *
-     * 2) check whether there is now a reply in the ARP cache, and send everything for that entry if there is
-     *
-     * 3) if not, check whether stuff in the queue has timed out
-     *  - if it has, max retrys?
-     *  - clear it out if it has, set retry++ if we haven't, send another ARP request
-     *  - if we clear it out, we need to send an ICMP time exceeded message
-     *
-     * 4) if it hasn't timed out, just ignore it
-     */
-    
+    arp_queue_flush(sr_arp_queue);
     
     
 }/* end sr_handlepacket */
