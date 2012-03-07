@@ -495,20 +495,17 @@ void ip_header_create(struct frame_t *outgoing)
     struct ip *send_header = outgoing->ip_header;
     
     assert(send_header);
+
     
-    //yeah, this is totally lame.
-    unsigned int four = 4;
-    unsigned int five = 5;
-    
-    send_header->ip_v = htonl(four);
-    send_header->ip_hl = htonl(five);
+    send_header->ip_v = 4;
+    send_header->ip_hl = 5;
     send_header->ip_tos = 0;
     send_header->ip_id = 0;
     send_header->ip_off = 0;
     send_header->ip_ttl = INIT_TTL;
     send_header->ip_p = IPPROTO_ICMP;
     send_header->ip_len = htons(outgoing->ip_len);
-    send_header->ip_src.s_addr = outgoing->to_ip;
+    send_header->ip_src.s_addr = outgoing->from_ip;
     send_header->ip_dst.s_addr = outgoing->to_ip;
     send_header->ip_sum = 0;
     compute_ip_checksum(outgoing); 
