@@ -213,7 +213,7 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
  * Memory cleanup
  *----------------------------------------------------------------------*/
 void destroy_frame_t(struct frame_t *frame){
-    free(frame->frame);
+    //free(frame->frame);
     free(frame);
 }
 
@@ -259,6 +259,7 @@ void sr_init(struct sr_instance* sr)
         empty_arpc_entry->arpc_mac[i] = 0xff;
     assert(empty_arpc_entry);
     sr_arp_cache.first = empty_arpc_entry;
+    sr_arp_cache.last = empty_arpc_entry;
     
     // initialize ARP queue
     struct arpq_entry *empty_arpq_entry = (struct arpq_entry *)malloc(sizeof(struct arpq_entry));
@@ -273,6 +274,7 @@ void sr_init(struct sr_instance* sr)
 
     assert(empty_arpq_entry);
     sr_arp_queue.first = empty_arpq_entry;
+    sr_arp_queue.last = empty_arpc_entry;
     
 } /* -- sr_init -- */
 
@@ -469,8 +471,8 @@ static struct arpc_entry *arp_cache_add(struct arp_cache *cache, unsigned char *
     assert(cache);
     assert(mac);
     
-    struct arpc_entry *entry;
-    if( entry = ((struct arpc_entry*) malloc(sizeof(struct arpc_entry))) )
+    struct arpc_entry *entry = ((struct arpc_entry*) malloc(sizeof(struct arpc_entry)));
+    if( entry )
     {
         memcpy(entry->arpc_mac, mac, ETHER_ADDR_LEN);
         entry->arpc_ip = ip;
@@ -872,7 +874,7 @@ static void arp_queue_flush(struct sr_instance *sr, struct arp_queue *queue)
             }
             else if (entry->arpq_packets.first) {
                 struct queued_packet *old_packet = entry->arpq_packets.first;
-                arp_req = arp_create(sr, old_packet->outgoing, old_packet->from_iface, ARP_REQUEST);
+                arp_req = arp_create(sr, old_packet->outgoing, old_packet->outgoing->iface, ARP_REQUEST);
                 sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->from_iface->name);
                 destroy_frame_t(arp_req);
             }
@@ -1012,6 +1014,7 @@ void sr_handlepacket(struct sr_instance* sr,
     
     /* First, deal with ARP cache timeouts */
     arp_cache_flush(&sr_arp_cache);
+    arp_queue_flush(sr, &sr_arp_queue);
     
     /* Do we only need to cache ARP replies, or src MAC/IP on regular IP packets too, etc? */
     /* Also, do we need to worry about fragmentation? */
@@ -1070,7 +1073,7 @@ void sr_handlepacket(struct sr_instance* sr,
                     if (arp_queue_lookup(sr_arp_queue.first, outgoing->to_ip)){ //if we've already sent an ARP request about this IP
                         arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC, incoming->iface); 
                     }
-                    else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC, incoming->iface);
+                    else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC, incoming->iface); // maybe this iface is the issue
                     struct sr_if *out_interface = outgoing->iface;
                 
                     //destroy_frame_t(outgoing);
@@ -1137,9 +1140,6 @@ void sr_handlepacket(struct sr_instance* sr,
     }
     
     destroy_frame_t(outgoing);
-    
-    arp_queue_flush(sr, &sr_arp_queue);
-    
     
 }/* end sr_handlepacket */
 
