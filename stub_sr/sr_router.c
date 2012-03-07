@@ -180,11 +180,12 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
         assert (new_frame->ip_header);
         
         new_frame->ip_len = ntohs(new_frame->ip_header->ip_len);
-        new_frame->ip_hl = ntohl(new_frame->ip_header->ip_hl) * WORDTOBYTE;
+        new_frame->ip_hl = new_frame->ip_header->ip_hl * WORDTOBYTE;
         new_frame->from_ip = new_frame->ip_header->ip_src.s_addr;
         new_frame->to_ip = new_frame->ip_header->ip_dst.s_addr;
         if (new_frame->ip_header->ip_p == IPPROTO_ICMP)
-            new_frame->icmp_header = (struct icmp_hdr *)(new_frame->ip_header + new_frame->ip_hl);
+            new_frame->icmp_header = (struct icmp_hdr *)((void *)new_frame->ip_header + new_frame->ip_hl);
+
     }
     else if(ntohs(new_frame->ether_header->ether_type)==ETHERTYPE_ARP){
         new_frame->arp_header = (struct sr_arphdr *) (new_frame->frame + sizeof(struct sr_ethernet_hdr));
@@ -1031,7 +1032,7 @@ void sr_handlepacket(struct sr_instance* sr,
                 printf("received ICMP datagram\n");
                 if(incoming->icmp_header->icmp_type == ECHO_REQUEST){
                     outgoing = generate_icmp_echo(incoming); 
-                    printf("received ICMP echo request");
+                    printf("received ICMP echo request\n");
                 }
             }
             else{
