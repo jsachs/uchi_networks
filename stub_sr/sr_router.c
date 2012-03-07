@@ -862,7 +862,7 @@ static void arp_queue_flush(struct sr_instance *sr, struct arp_queue *queue)
                 temp = entry;
                 arpq_packets_icmpsend(sr, &entry->arpq_packets);
             }
-            else {
+            else if (entry->arpq_packets.first) {
                 struct queued_packet *old_packet = entry->arpq_packets.first;
                 arp_req = arp_create(sr, old_packet->outgoing, old_packet->from_iface, ARP_REQUEST);
                 sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->from_iface->name);
@@ -894,7 +894,7 @@ static void arp_cache_flush(struct arp_cache *cache)
     assert(cache);
     
     struct arpc_entry *entry = cache->first;
-    struct arpc_entry *temp;
+    struct arpc_entry *temp = NULL;
     
     while(entry) {
         if( time(NULL) > entry->arpc_timeout)
