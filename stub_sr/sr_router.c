@@ -184,7 +184,7 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
         new_frame->from_ip = new_frame->ip_header->ip_src.s_addr;
         new_frame->to_ip = new_frame->ip_header->ip_dst.s_addr;
         if (new_frame->ip_header->ip_p == IPPROTO_ICMP)
-            new_frame->icmp_header = (struct icmp_hdr *)(new_frame->ip_header + new_frame->ip_hl);
+            new_frame->icmp_header = (struct icmp_hdr *)(new_frame->ip_header + ntohl(new_frame->ip_hl));
     }
     else if(ntohs(new_frame->ether_header->ether_type)==ETHERTYPE_ARP){
         new_frame->arp_header = (struct sr_arphdr *) (new_frame->frame + sizeof(struct sr_ethernet_hdr));
@@ -318,20 +318,20 @@ static void compute_ip_checksum(struct frame_t *frame)
     struct ip *ip_header = frame->ip_header;
     
     uint32_t sum = 0;
-    ip_header->ip_sum = 0;
+    int count = ip_header->ip_hl * 2;
     
     uint16_t *temp = (uint16_t *) ip_header;
-    
-    if (!ip_header->ip_hl%2) ip_header->ip_hl++;
-    
-    int i;
-    for (i = 0; i < ip_header->ip_hl * 2; i++)
-        sum += temp[i];
-    
-    sum = (sum >> 16) + (sum & 0xffff);
-    sum += (sum >> 16);
-    
-    ip_header->ip_sum = ~sum;
+
+    while(count--)
+    {
+        sum += *temp++;
+        if(sum & 0xffff0000) {
+            sum &= 0xffff;
+            sum++;
+        }
+    }
+    frame->ip_header->ip_sum = ~(sum & 0xffff);
+    return;
 }
 
 /*--------------------------------------------------------------------- 
@@ -1015,7 +1015,7 @@ void sr_handlepacket(struct sr_instance* sr,
         compute_ip_checksum(incoming);
         
         /* Check the checksum */
-        if( incoming->ip_header->ip_sum != 0xffff ) { 
+        if( incoming->ip_header->ip_sum != 0 ) { 
             fprintf(stderr, "IP checksum incorrect, packet was dropped\n");
             return;
         }
