@@ -265,6 +265,8 @@ void sr_init(struct sr_instance* sr)
     empty_arpq_entry->arpq_if = NULL;
     empty_arpq_entry->arpq_last_req = 0;
     empty_arpq_entry->arpq_num_reqs = 0;
+    empty_arpq_entry->arpq_packets.first = NULL;
+    empty_arpq_entry->arpq_packets.last = NULL;
     empty_arpq_entry->prev = NULL;
     empty_arpq_entry->next = NULL;
 
@@ -318,7 +320,7 @@ static void compute_ip_checksum(struct frame_t *frame)
     struct ip *ip_header = frame->ip_header;
     
     uint32_t sum = 0;
-    ip_header->ip_sum = 0;
+    //ip_header->ip_sum = 0;
     
     uint16_t *temp = (uint16_t *) ip_header;
     
