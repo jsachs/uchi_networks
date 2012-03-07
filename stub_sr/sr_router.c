@@ -545,7 +545,7 @@ static struct frame_t *generate_icmp_echo(struct frame_t *incoming){
     
     assert(outgoing->ip_header);
     
-    outgoing->icmp_header = (struct icmp_hdr *)(outgoing->ip_header + outgoing->ip_hl);
+    outgoing->icmp_header = (struct icmp_hdr *)((void *)outgoing->ip_header + incoming->ip_hl);
     
     assert(outgoing->icmp_header);
     
@@ -558,7 +558,7 @@ static struct frame_t *generate_icmp_echo(struct frame_t *incoming){
     outgoing->iface = incoming->iface;
     outgoing->len = incoming->len;
     outgoing->ip_len = incoming->ip_len;
-    outgoing->ip_hl = 5;
+    outgoing->ip_hl = incoming->ip_hl;
     
     
     /* fill out icmp header */
@@ -613,7 +613,7 @@ static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t ic
     
     assert(outgoing->ip_header);
     
-    outgoing->icmp_header = (struct icmp_hdr *)(outgoing->ip_header + sizeof(struct icmp_hdr));
+    outgoing->icmp_header = (struct icmp_hdr *)((void *)outgoing->ip_header + incoming->ip_hl);
     
     assert(outgoing->icmp_header);
     
