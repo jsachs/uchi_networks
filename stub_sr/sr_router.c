@@ -728,7 +728,7 @@ static struct frame_t *arp_create(struct sr_instance *sr, struct frame_t *incomi
     else{
         outgoing->arp_header->ar_tip = incoming->from_ip; //incoming is an ARP request, we want to send back to that IP
         outgoing->to_ip = incoming->from_ip;
-        memset(outgoing->to_MAC, incoming->from_MAC, ETHER_ADDR_LEN);
+        memcpy(outgoing->to_MAC, incoming->from_MAC, ETHER_ADDR_LEN);
     }
     
     outgoing->arp_header->ar_sip = outgoing->iface->ip;
