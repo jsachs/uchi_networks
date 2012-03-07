@@ -287,25 +287,30 @@ void sr_init(struct sr_instance* sr)
 static void compute_icmp_checksum(struct frame_t *frame)
 {
     struct icmp_hdr *icmp_header = frame->icmp_header;
-    uint8_t *packet = (uint8_t *) icmp_header;
     int len = frame->len - sizeof(struct sr_ethernet_hdr) - frame->ip_hl;
+    int count = len / 2;
     
     if (!len%2) len++;
     
+    void *checksum_copy = calloc(len, sizeof(char));
+    memcpy(checksum_copy, icmp_header, len);
+    
     uint32_t sum = 0;
-    icmp_header->icmp_sum = 0;
     
-    uint16_t *tmp = (uint16_t *) packet;
+    uint16_t *tmp = (uint16_t *) checksum_copy;
     
-    int i;
-    for (i = 0; i < len / 2; i++) {
-        sum += tmp[i];
+    while(count--)
+    {
+        sum += *tmp++;
+        if(sum & 0xffff0000) {
+            sum &= 0xffff;
+            sum++;
+        }
     }
     
-    sum = (sum >> 16) + (sum & 0xffff);
-    sum += (sum >> 16);
-    
-    icmp_header->icmp_sum = ~sum;
+    frame->icmp_header->icmp_sum = ~(sum & 0xffff);
+    free(checksum_copy);
+    return;
 }
 
 /*--------------------------------------------------------------------- 
@@ -730,8 +735,8 @@ static struct frame_t *arp_create(struct sr_instance *sr, struct frame_t *incomi
     memcpy(outgoing->from_MAC, iface->addr, ETHER_ADDR_LEN);
     
     if (op == ARP_REQUEST){
-        struct sr_rt *route_entry = rt_match(sr, ntohl(iface->ip));
-        outgoing->arp_header->ar_tip = route_entry->dest.s_addr; //incoming is an IP datagram, we want to know MAC of next hop in routing table
+        struct sr_rt *route_entry = rt_match(sr, incoming->to_ip);
+        outgoing->arp_header->ar_tip = route_entry->gw.s_addr; //incoming is an IP datagram, we want to know MAC of next hop in routing table
         outgoing->to_ip = outgoing->arp_header->ar_tip;
         memset(outgoing->to_MAC, 0xFF, ETHER_ADDR_LEN); //set outgoing MAC to broadcast address 
     }
@@ -927,7 +932,7 @@ static void arp_cache_flush(struct arp_cache *cache)
  * This method fills in the IP header and frame_t for outgoing based on the 
  * parameters given.
  *--------------------------------------------------------------------*/
-void update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, struct frame_t *outgoing){
+static struct frame_t *update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming){
     assert(incoming);
     //struct ip *recv_header = (struct ip *)recv_datagram;
     //size_t ip_len = ntohs(recv_header->ip_len);
@@ -937,7 +942,7 @@ void update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, struct fram
     //memcpy(send_datagram, recv_datagram, ip_len);
     
     /* create and fill out frame_t */
-    outgoing = (struct frame_t *)malloc(sizeof(struct frame_t));
+    struct frame_t *outgoing = (struct frame_t *)malloc(sizeof(struct frame_t));
     
     assert(outgoing);
     
@@ -958,7 +963,7 @@ void update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, struct fram
     outgoing->len = incoming->len;
     
     //also needs to do routing table lookup and set iface
-    struct sr_rt *router_entry = rt_match(sr, ntohl(incoming->to_ip));
+    struct sr_rt *router_entry = rt_match(sr, incoming->to_ip);
     outgoing->iface = get_interface(sr, router_entry->interface);
     memcpy(outgoing->from_MAC, outgoing->iface->addr, ETHER_ADDR_LEN);
     outgoing->ip_header->ip_sum = 0;
@@ -968,7 +973,7 @@ void update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, struct fram
     outgoing->ip_header->ip_sum = 0;
     compute_ip_checksum(outgoing); //we want length in 16-bit words
     
-    return;
+    return outgoing;
 }
 
 
@@ -1030,10 +1035,13 @@ void sr_handlepacket(struct sr_instance* sr,
             /* Is this an ICMP packet? */
             if (incoming->icmp_header){
                 printf("received ICMP datagram\n");
-                if(incoming->icmp_header->icmp_type == ECHO_REQUEST){
+                compute_icmp_checksum(incoming);
+                if(incoming->icmp_header->icmp_type == ECHO_REQUEST && incoming->icmp_header->icmp_sum == 0){
                     outgoing = generate_icmp_echo(incoming); 
                     printf("received ICMP echo request\n");
                 }
+                else
+                    printf("Dropped packet--we don't deal with that code, or invalid checksum\n");
             }
             else{
                 outgoing = generate_icmp_error(incoming, DEST_UNREACH, PORT_UNREACH);
@@ -1051,8 +1059,8 @@ void sr_handlepacket(struct sr_instance* sr,
                 /* update and forward packet; if necessary, add it to queue */
                 struct arpc_entry *incache;
 
-                update_ip_hdr(sr, incoming, outgoing);
-                printf("packet to forward");
+                outgoing = update_ip_hdr(sr, incoming);
+                printf("packet to forward\n");
                 
                 incache = arp_cache_lookup(sr_arp_cache.first, outgoing->to_ip);
                 
@@ -1065,10 +1073,11 @@ void sr_handlepacket(struct sr_instance* sr,
                     else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC, incoming->iface);
                     struct sr_if *out_interface = outgoing->iface;
                 
-                    destroy_frame_t(outgoing);
+                    //destroy_frame_t(outgoing);
+                    free(outgoing->frame);
                     
                     /* make ARP request */
-                    outgoing = arp_create(sr, incoming, out_interface, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram 
+                    outgoing = arp_create(sr, outgoing, outgoing->iface, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram 
                     printf("sending ARP request\n");
                 }
                 else{
@@ -1124,8 +1133,10 @@ void sr_handlepacket(struct sr_instance* sr,
     //encapsulate and send datagram, if appropriate
     if (outgoing != NULL){ 
         sr_send_packet(sr, (uint8_t *)outgoing->frame, outgoing->len, outgoing->iface->name);
-        printf("sent packet of length %d\n", outgoing->len);
+        printf("sent packet of length %d on iface %s\n", outgoing->len, outgoing->iface->name);
     }
+    
+    destroy_frame_t(outgoing);
     
     arp_queue_flush(sr, &sr_arp_queue);
     
