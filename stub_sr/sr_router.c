@@ -594,6 +594,9 @@ static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t ic
     /* get some useful info about lengths */
     size_t icmp_data_len = incoming->ip_hl + 2 * sizeof(uint32_t);      //length of echo data, in bytes
     
+    if (incoming->ip_len - incoming->ip_hl < 8 )
+        icmp_data_len = incoming->ip_len;
+    
     /* create and fill out frame_t */
     struct frame_t *outgoing = malloc(sizeof(struct frame_t));
     
@@ -605,7 +608,7 @@ static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t ic
     
     assert(outgoing->frame);
     
-    outgoing->ip_header = (struct ip *)(outgoing->frame + sizeof(struct ip));
+    outgoing->ip_header = (struct ip *)(outgoing->frame + sizeof(struct sr_ethernet_hdr));
     outgoing->arp_header = NULL;
     
     assert(outgoing->ip_header);
@@ -631,7 +634,7 @@ static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t ic
     outgoing->icmp_header->icmp_sum = 0;
     
     /* copy data into header: packet includes IP header, ICMP header, and beginning of original packet */
-    void *icmp_data = outgoing->icmp_header + sizeof(outgoing->icmp_header);
+    void *icmp_data = outgoing->icmp_header + sizeof(struct icmp_hdr);
     assert(icmp_data);
     memcpy(icmp_data, incoming->ip_header, icmp_data_len);
     
