@@ -29,8 +29,8 @@
 #define ETHER_ADDR_LEN 6
 #define ICMP_HDR_LEN 8
 #define ICMP_DATA_LEN 8
-#define ARP_CACHE_TIMEOUT 15
-#define ARP_REQUEST_TIMEOUT 1
+#define ARP_CACHE_TIMEOUT 15000
+#define ARP_REQUEST_TIMEOUT 1000
 #define INIT_TTL 255
 
 /* define some constants for ICMP types/codes and probably some other codes later on */
@@ -274,7 +274,7 @@ void sr_init(struct sr_instance* sr)
 
     assert(empty_arpq_entry);
     sr_arp_queue.first = empty_arpq_entry;
-    sr_arp_queue.last = empty_arpc_entry;
+    sr_arp_queue.last = empty_arpq_entry;
     
 } /* -- sr_init -- */
 
@@ -671,10 +671,11 @@ static void arpq_entry_clear(struct sr_instance *sr,
     while( qpacket = ((entry->arpq_packets).first) )
     {
         struct frame_t *outgoing = qpacket->outgoing;
-        memcpy(outgoing->from_MAC, (entry->arpq_if)->addr, ETHER_ADDR_LEN);
+        memcpy(outgoing->from_MAC, outgoing->iface->addr, ETHER_ADDR_LEN);
         memcpy(outgoing->to_MAC, d_ha, ETHER_ADDR_LEN);
         
         encapsulate(outgoing);
+        printf("forwarding packet on interface %s\n", outgoing->iface->name);
         sr_send_packet(sr, (uint8_t *)outgoing->frame, outgoing->len, outgoing->iface->name); 
         
         //struct ip *s_ip = (struct ip *) ( qpacket->packet + sizeof(struct sr_ethernet_hdr));
@@ -696,7 +697,7 @@ static void arpq_entry_clear(struct sr_instance *sr,
     if (entry->next) (entry->next)->prev = entry->prev;
     else queue->last = entry->prev;
     
-    destroy_arpq_entry(entry);
+    //if (entry->prev) destroy_arpq_entry(entry);
     return;
 }
 
@@ -779,6 +780,12 @@ static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, struct fr
         memcpy(new_packet->outgoing, packet, sizeof(struct frame_t));
         new_packet->outgoing->frame = malloc(packet->len);
         memcpy(new_packet->outgoing->frame, packet->frame, packet->len);
+        
+        /*reset all the pointers in new_packet->outgoing to point to new frame */
+        new_packet->outgoing->ether_header = (struct sr_ethernet_hdr *)new_packet->outgoing->frame;
+        
+        new_packet->outgoing->ip_header = (struct ip *)(new_packet->outgoing->frame + sizeof(struct sr_ethernet_hdr));
+        
         new_packet->from_iface = old_iface;
         memcpy(new_packet->from_MAC,  old_MAC, ETHER_ADDR_LEN);
         
@@ -845,6 +852,7 @@ void arpq_packets_icmpsend(struct sr_instance *sr, struct packetq *arpq_packets)
         
         ICMP_err = generate_icmp_error(current_packet->outgoing, DEST_UNREACH, HOST_UNREACH);
         
+        printf("sending Host Unreachable packets\n");
         sr_send_packet(sr, (uint8_t *)current_packet->outgoing->frame, 
                        current_packet->outgoing->len, 
                        current_packet->from_iface->name);
@@ -875,7 +883,8 @@ static void arp_queue_flush(struct sr_instance *sr, struct arp_queue *queue)
             else if (entry->arpq_packets.first) {
                 struct queued_packet *old_packet = entry->arpq_packets.first;
                 arp_req = arp_create(sr, old_packet->outgoing, old_packet->outgoing->iface, ARP_REQUEST);
-                sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->from_iface->name);
+                printf("Sending yet another arp request from arp_queue_flush\n");
+                sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->outgoing->iface->name);
                 destroy_frame_t(arp_req);
             }
         }
@@ -907,7 +916,7 @@ static void arp_cache_flush(struct arp_cache *cache)
     struct arpc_entry *temp = NULL;
     
     while(entry) {
-        if( time(NULL) > entry->arpc_timeout)
+        if( entry->arpc_timeout && (time(NULL) > entry->arpc_timeout) )
         {
             if (entry->prev) (entry->prev)->next = entry->next;
             else cache->first = entry->next;
@@ -1071,9 +1080,9 @@ void sr_handlepacket(struct sr_instance* sr,
                 if (!incache){
                     
                     if (arp_queue_lookup(sr_arp_queue.first, outgoing->to_ip)){ //if we've already sent an ARP request about this IP
-                        arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC, incoming->iface); 
+                         arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC, incoming->iface);
                     }
-                    else arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC, incoming->iface); // maybe this iface is the issue
+                    else arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC, incoming->iface);
                     struct sr_if *out_interface = outgoing->iface;
                 
                     //destroy_frame_t(outgoing);
