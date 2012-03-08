@@ -943,7 +943,7 @@ static void arp_cache_flush(struct arp_cache *cache)
  * This method fills in the IP header and frame_t for outgoing based on the 
  * parameters given.
  *--------------------------------------------------------------------*/
-static struct frame_t *update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming){
+static struct frame_t *update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, uint32_t *next_hop_ip){
     assert(incoming);
     //struct ip *recv_header = (struct ip *)recv_datagram;
     //size_t ip_len = ntohs(recv_header->ip_len);
@@ -975,6 +975,7 @@ static struct frame_t *update_ip_hdr(struct sr_instance *sr, struct frame_t *inc
     
     //also needs to do routing table lookup and set iface
     struct sr_rt *router_entry = rt_match(sr, incoming->to_ip);
+    *next_hop_ip = router_entry->gw.s_addr;
     outgoing->iface = get_interface(sr, router_entry->interface);
     memcpy(outgoing->from_MAC, outgoing->iface->addr, ETHER_ADDR_LEN);
     outgoing->ip_header->ip_sum = 0;
@@ -1070,11 +1071,14 @@ void sr_handlepacket(struct sr_instance* sr,
 
                 /* update and forward packet; if necessary, add it to queue */
                 struct arpc_entry *incache;
-
-                outgoing = update_ip_hdr(sr, incoming);
-                printf("packet to forward\n");
+                uint32_t arpc_ip;
+                printf("packet to forward to %x\n", incoming->to_ip);
+                outgoing = update_ip_hdr(sr, incoming, &arpc_ip);
+                printf("packet to forward to %x\n", incoming->to_ip);
                 
-                incache = arp_cache_lookup(sr_arp_cache.first, outgoing->to_ip);
+                
+                
+                incache = arp_cache_lookup(sr_arp_cache.first, arpc_ip);
                 
                 
                 if (!incache){
@@ -1126,6 +1130,7 @@ void sr_handlepacket(struct sr_instance* sr,
             printf("It's for us\n");
             if( !in_cache ) {
                 if( arp_cache_add(&sr_arp_cache, arp_header->ar_sha, arp_header->ar_sip) ) {
+                    printf("added to cache\n");
                     struct arpq_entry *new_ent;
                     if( new_ent = arp_queue_lookup(sr_arp_queue.first, arp_header->ar_sip) )
                         arpq_entry_clear(sr, &sr_arp_queue, new_ent, arp_header->ar_sha);
