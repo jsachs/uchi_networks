@@ -1,0 +1,32 @@
+Readme for sachs_sandler sr router
+
+We use three main data structures: the sr_arp_queue, the sr_arp_cache, and the frame_t
+
+The frame_t is used for every frame we recieve, and its creation and filled out fields determine the flow of handlepacket
+It exists to make it easier to access things already in the frames, i.e. accessing various headers and such
+
+The cache and queue are linked lists of entries.  Furthermore, the queue entries contain their own linked lists of
+all the queued packets for a given destination IP
+
+We first create a frame_t struct for the incoming packet.
+
+Whe then flush the cache and queue with the flush functions.  Flushing the cache
+simply involves removing and freeing timed out entries.  Flushing the queue involves looking for timeouts as well
+as entries that have met or exceeded 5 requests, and sending either another ARP request to the destination, or an ICMP
+host unreachable message to all of the queued packets for that IP.
+
+We now branch based on whether the incoming packet is IP or ARP.
+
+IP:
+We first perform sanity checks on version and checksum.
+We then look to see if we are the destination, or if we need to route the packet.
+If we are the destination, we determine if it's an ICMP packet or not.
+If it is, and it's an echo request, we send the echo reply with generate_icmp_echo. It drops other ICMP packets.
+If it's not ICMP, we create a port unreachable datagram with generate_icmp_error
+
+If we're not the destination, we need to route the packet.
+First we check for timeout, and if it has timed our we generate a time exceeded message with generate_icmp_error
+Otherwise, decrement ttl, and update the checksum, using update_ip_header.  This also determines the IP of the next hop
+
+We then check the ARP cache.  If it's not in the cache, we use arp_queue_lookup to see if there are other queued packets for this dest.
+Then either add the packet to the arpq_entry if there are other packets, or create a new entry if there aren't.
