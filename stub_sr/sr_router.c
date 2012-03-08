@@ -784,6 +784,7 @@ static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, struct fr
         new_packet->outgoing = malloc(sizeof(struct frame_t));
         memcpy(new_packet->outgoing, packet, sizeof(struct frame_t));
         new_packet->outgoing->frame = malloc(packet->len);
+        if (!new_packet->outgoing->frame) printf("malloc failed\n");
         memcpy(new_packet->outgoing->frame, packet->frame, packet->len);
         
         /*reset all the pointers in new_packet->outgoing to point to new frame */
@@ -1127,9 +1128,9 @@ void sr_handlepacket(struct sr_instance* sr,
                         if( time(NULL) - 1 > entry->arpq_last_req ) {
                             if(entry->arpq_num_reqs >= ARP_MAX_REQ)
                             {
+                                printf("Too many ARP requests\n");
                                 arpq_packets_icmpsend(sr, &entry->arpq_packets);
-                                free(entry);
-                                
+                                destroy_arpq_entry(entry);
                                 return;
                             }
                             else if (entry->arpq_packets.first)
@@ -1144,7 +1145,7 @@ void sr_handlepacket(struct sr_instance* sr,
                             }
                         }
                         assert( (entry->arpq_packets).first );
-                        if (!arpq_add_packet(entry, packet, len, incoming->from_MAC, incoming->iface))
+                        if (!arpq_add_packet(entry, outgoing, len, incoming->from_MAC, incoming->iface))
                             printf("ARP queue packet add failed\n");
                     }
                     /* else, there are no outstanding ARP requests for this particular IP */
@@ -1215,7 +1216,7 @@ void sr_handlepacket(struct sr_instance* sr,
         printf("sent packet of length %d on iface %s\n", outgoing->len, outgoing->iface->name);
     }
     
-    destroy_frame_t(outgoing);
+    if (outgoing != NULL) destroy_frame_t(outgoing);
     
 }/* end sr_handlepacket */
 
