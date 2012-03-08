@@ -29,8 +29,8 @@
 #define ETHER_ADDR_LEN 6
 #define ICMP_HDR_LEN 8
 #define ICMP_DATA_LEN 8
-#define ARP_CACHE_TIMEOUT 15000
-#define ARP_REQUEST_TIMEOUT 1000
+#define ARP_CACHE_TIMEOUT 15
+#define ARP_REQUEST_TIMEOUT 200
 #define INIT_TTL 255
 
 /* define some constants for ICMP types/codes and probably some other codes later on */
@@ -807,7 +807,6 @@ static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *
 {
     assert(queue);
     assert(iface);
-    //assert(icmp_if);
     assert(packet);
     
     struct arpq_entry *new_entry;
@@ -821,6 +820,7 @@ static struct arpq_entry *arpq_add_entry(struct arp_queue *queue, struct sr_if *
         
         if(arpq_add_packet(new_entry, packet, len, old_MAC, old_iface))
         {
+            new_entry->arpq_last_req = time(NULL);
             new_entry->arpq_num_reqs = 0;
             new_entry->next = NULL;
             new_entry->prev = queue->last;
@@ -874,7 +874,7 @@ static void arp_queue_flush(struct sr_instance *sr, struct arp_queue *queue)
     struct frame_t *arp_req;
     
     while(entry) {
-        if( time(NULL) - 1 > entry->arpq_last_req)
+        if( time(NULL) - ARP_REQUEST_TIMEOUT > entry->arpq_last_req)
         {
             if(entry->arpq_num_reqs >= ARP_MAX_REQ) {
                 temp = entry;
@@ -886,6 +886,8 @@ static void arp_queue_flush(struct sr_instance *sr, struct arp_queue *queue)
                 printf("Sending yet another arp request from arp_queue_flush\n");
                 sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->outgoing->iface->name);
                 destroy_frame_t(arp_req);
+                entry->arpq_last_req = time(NULL);
+                entry->arpq_num_reqs++;
             }
         }
         entry = entry->next;
