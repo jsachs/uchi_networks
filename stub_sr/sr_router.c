@@ -29,6 +29,7 @@
 #define ETHER_ADDR_LEN 6
 #define ICMP_HDR_LEN 8
 #define ICMP_DATA_LEN 8
+#define ETHER_HDR_LEN 42 // TODO is this right? Is it actually 48 or 60?
 #define ARP_CACHE_TIMEOUT 15
 #define ARP_REQUEST_TIMEOUT 1
 #define INIT_TTL 255
@@ -69,6 +70,7 @@ struct arpc_entry {
     struct        arpc_entry *next;
 };
 
+/* this struct is used for queueing packets in arpq_entry */
 struct queued_packet {
     uint8_t from_MAC[ETHER_ADDR_LEN];
     struct  sr_if *from_iface;
@@ -126,6 +128,8 @@ static struct arp_queue sr_arp_queue = {0, 0};
 
 /*--------------------------------------------------------------------- 
  * Method: get_interface
+ *
+ * returns an sr_if that matches the given interface name
  *
  *---------------------------------------------------------------------*/
 static struct sr_if *get_interface(struct sr_instance *sr, const char *if_name)
@@ -257,6 +261,7 @@ void sr_init(struct sr_instance* sr)
     empty_arpc_entry->next = NULL;
     for(int i = 0; i < ETHER_ADDR_LEN; i++)
         empty_arpc_entry->arpc_mac[i] = 0xff;
+    
     assert(empty_arpc_entry);
     sr_arp_cache.first = empty_arpc_entry;
     sr_arp_cache.last = empty_arpc_entry;
@@ -1027,6 +1032,11 @@ void sr_handlepacket(struct sr_instance* sr,
     assert(interface);
     
     printf("*** -> Received packet of length %d \n",len);
+    if( len < ETHER_HDR_LEN ) {
+        printf("Bogus packet length\n");
+        return;
+    }
+    
     
     struct sr_if *iface;
     
@@ -1044,14 +1054,18 @@ void sr_handlepacket(struct sr_instance* sr,
     /* Start by determining protocol */
     if (incoming->ip_header){
         
-        compute_ip_checksum(incoming);
+        /* sanity checks */
+        if ( incoming->ip_header->ip_v != 4 ){
+            printf("IP packet not IPv4\n");
+            return;
+        }
         
+        compute_ip_checksum(incoming);
         /* Check the checksum */
         if( incoming->ip_header->ip_sum != 0 ) { 
             fprintf(stderr, "IP checksum incorrect, packet was dropped\n");
             return;
         }
-        
         //set checksum back to what it was
         compute_ip_checksum(incoming);
         
@@ -1108,10 +1122,34 @@ void sr_handlepacket(struct sr_instance* sr,
                 
                 
                 if (!incache){
-                    
-                    if (arp_queue_lookup(sr_arp_queue.first, outgoing->to_ip)){ //if we've already sent an ARP request about this IP
-                         arpq_add_packet(sr_arp_queue.first, outgoing, outgoing->ip_len, incoming->from_MAC, incoming->iface);
+                    struct arpq_entry *entry = arp_queue_lookup(sr_arp_queue.first, outgoing->to_ip);
+                    if ( entry ){ //if we've already sent an ARP request about this IP
+                        if( time(NULL) - 1 > entry->arpq_last_req ) {
+                            if(entry->arpq_num_reqs >= ARP_MAX_REQ)
+                            {
+                                arpq_packets_icmpsend(sr, &entry->arpq_packets);
+                                free(entry);
+                                
+                                // TODO send an ICMP host unreachable, but can we use one of our functions here?
+                                
+                                return;
+                            }
+                            else if (entry->arpq_packets.first)
+                            {
+                                struct frame_t *arp_req;
+                                struct queued_packet *old_packet = entry->arpq_packets.first;
+                                arp_req = arp_create(sr, old_packet->outgoing, old_packet->outgoing->iface, ARP_REQUEST);
+                                sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->outgoing->iface->name);
+                                destroy_frame_t(arp_req);
+                                entry->arpq_last_req = time(NULL);
+                                entry->arpq_num_reqs++;
+                            }
+                        }
+                        assert( (entry->arpq_packets).first );
+                        if (!arpq_add_packet(entry, packet, len, NULL, NULL)) // TODO what should these arguments be?
+                            printf("ARP queue packet add failed\n");
                     }
+                    /* else, there are no outstanding ARP requests for this particular IP */
                     else arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC, incoming->iface);
                     struct sr_if *out_interface = outgoing->iface;
                 
@@ -1182,29 +1220,6 @@ void sr_handlepacket(struct sr_instance* sr,
     destroy_frame_t(outgoing);
     
 }/* end sr_handlepacket */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
