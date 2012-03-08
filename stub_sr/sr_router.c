@@ -613,10 +613,6 @@ static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t ic
     assert (incoming);
     
     /* need to get pointers to various things */
-    //struct ip *recv_header = (struct ip *)recv_datagram;
-    //struct in_addr ip_dst, ip_src;
-    //ip_dst.s_addr = recv_header->ip_src.s_addr;
-    //ip_src.s_addr = recv_header->ip_dst.s_addr;
     
     /* get some useful info about lengths */
     size_t icmp_data_len = incoming->ip_hl + 2 * sizeof(uint32_t);      //length of echo data, in bytes
@@ -1106,6 +1102,7 @@ void sr_handlepacket(struct sr_instance* sr,
                     incoming->icmp_header = ((void *) incoming->ip_header + 
                                                              incoming->ip_hl);
                     uint8_t code = incoming->icmp_header->icmp_type;
+                    //don't send ICMP error messages about ICMP error messages
                     if (code == DEST_UNREACH || code == TIME_EXCEEDED || code == 12 || code == 31)
                         //12 and 31 indicate bad IP header and datagram conversion error, respectively
                         err = 1;
