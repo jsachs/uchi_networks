@@ -29,7 +29,7 @@
 #define ETHER_ADDR_LEN 6
 #define ICMP_HDR_LEN 8
 #define ICMP_DATA_LEN 8
-#define ETHER_HDR_LEN 42 // TODO is this right? Is it actually 48 or 60?
+#define ETHER_HDR_LEN 42 
 #define ARP_CACHE_TIMEOUT 15
 #define ARP_REQUEST_TIMEOUT 1
 #define INIT_TTL 255
@@ -85,6 +85,7 @@ struct packetq {
 
 struct arpq_entry {
     uint32_t arpq_ip;
+    uint32_t arpq_next_hop;
     struct   sr_if *arpq_if;
     struct   packetq arpq_packets;
     time_t   arpq_last_req;
@@ -410,6 +411,20 @@ static struct arpq_entry *arp_queue_lookup(struct arpq_entry *entry, uint32_t ip
 }
 
 /*--------------------------------------------------------------------- 
+ * Method: arpq_next_hop_lookup
+ *
+ *---------------------------------------------------------------------*/
+static struct arpq_entry *arpq_next_hop_lookup(struct arpq_entry *entry, uint32_t ip)
+{
+    while( entry && (ip != entry->arpq_next_hop) )
+        entry = entry->next;
+    
+    if (entry) return entry;
+    
+    return NULL;
+}
+
+/*--------------------------------------------------------------------- 
  * Method: encapsulate(struct frame_t *outgoing)
  *
  * This method fills in the ethernet header fields for the packet
@@ -680,13 +695,8 @@ static void arpq_entry_clear(struct sr_instance *sr,
         memcpy(outgoing->to_MAC, d_ha, ETHER_ADDR_LEN);
         
         encapsulate(outgoing);
-        //printf("forwarding packet on interface %s\n", outgoing->iface->name);
         printf("cleared packet from queue\n");
         sr_send_packet(sr, (uint8_t *)outgoing->frame, outgoing->len, outgoing->iface->name); 
-        
-        //struct ip *s_ip = (struct ip *) ( qpacket->packet + sizeof(struct sr_ethernet_hdr));
-        //s_ip->ip_sum = 0;
-        //s_ip->ip_sum = compute_checksum( (uint16_t *) s_ip, s_ip->ip_hl * WORD_SIZE);
         
         if( !((entry->arpq_packets).first = qpacket->next) ){
             (entry->arpq_packets).first = NULL;
@@ -703,7 +713,7 @@ static void arpq_entry_clear(struct sr_instance *sr,
     if (entry->next) (entry->next)->prev = entry->prev;
     else queue->last = entry->prev;
     
-    //if (entry->prev) destroy_arpq_entry(entry);
+    if (entry->prev) destroy_arpq_entry(entry);
     return;
 }
 
@@ -775,7 +785,6 @@ static struct queued_packet *arpq_add_packet(struct arpq_entry *entry, struct fr
 {
     assert(entry);
     assert(packet);
-    //assert(if_name);
     entry->arpq_num_reqs++; //this only gets called when we're about to send an ARP request
     
     struct queued_packet *new_packet;
@@ -903,7 +912,6 @@ static void arp_queue_flush(struct sr_instance *sr, struct arp_queue *queue)
             else if (entry->arpq_packets.first) {
                 struct queued_packet *old_packet = entry->arpq_packets.first;
                 arp_req = arp_create(sr, old_packet->outgoing, old_packet->outgoing->iface, ARP_REQUEST);
-                //printf("Sending yet another arp request from arp_queue_flush\n");
                 sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->outgoing->iface->name);
                 destroy_frame_t(arp_req);
                 entry->arpq_last_req = time(NULL);
@@ -967,12 +975,6 @@ static void arp_cache_flush(struct arp_cache *cache)
  *--------------------------------------------------------------------*/
 static struct frame_t *update_ip_hdr(struct sr_instance *sr, struct frame_t *incoming, uint32_t *next_hop_ip){
     assert(incoming);
-    //struct ip *recv_header = (struct ip *)recv_datagram;
-    //size_t ip_len = ntohs(recv_header->ip_len);
-    //size_t ip_header_len = recv_header->ip_hl * WORDTO16BIT;
-    //send_datagram = malloc(ip_len);
-    //struct ip *send_header = (struct ip *)send_datagram;
-    //memcpy(send_datagram, recv_datagram, ip_len);
     
     /* create and fill out frame_t */
     struct frame_t *outgoing = (struct frame_t *)malloc(sizeof(struct frame_t));
@@ -1078,14 +1080,14 @@ void sr_handlepacket(struct sr_instance* sr,
 
         /* Are we the destination? */
         if (iface = if_dst_check(sr, incoming->to_ip)){  //we could change this to just take incoming and then get to_ip
-            //printf("received IP datagram\n");
+
             /* Is this an ICMP packet? */
             if (incoming->icmp_header){
-                //printf("received ICMP datagram\n");
+                printf("received ICMP datagram\n");
                 compute_icmp_checksum(incoming);
                 if(incoming->icmp_header->icmp_type == ECHO_REQUEST && incoming->icmp_header->icmp_sum == 0){
                     outgoing = generate_icmp_echo(incoming); 
-                    //printf("received ICMP echo request\n");
+                    printf("received ICMP echo request\n");
                 }
                 else
                     printf("Dropped packet--we don't deal with that code, or invalid checksum\n");
@@ -1118,9 +1120,8 @@ void sr_handlepacket(struct sr_instance* sr,
                 /* update and forward packet; if necessary, add it to queue */
                 struct arpc_entry *incache;
                 uint32_t arpc_ip;
-                //printf("packet to forward to %x\n", incoming->to_ip);
                 outgoing = update_ip_hdr(sr, incoming, &arpc_ip);
-                //printf("packet to forward to %x\n", incoming->to_ip);
+
                 
                 
                 
@@ -1129,6 +1130,7 @@ void sr_handlepacket(struct sr_instance* sr,
                 
                 if (!incache){
                     struct arpq_entry *entry = arp_queue_lookup(sr_arp_queue.first, outgoing->to_ip);
+                    struct arpq_entry *temp_entry = NULL;
                     if ( entry ){ //if we've already sent an ARP request about this IP
                         if( time(NULL) - 1 > entry->arpq_last_req ) {
                             if(entry->arpq_num_reqs >= ARP_MAX_REQ)
@@ -1157,15 +1159,15 @@ void sr_handlepacket(struct sr_instance* sr,
                     /* else, there are no outstanding ARP requests for this particular IP */
                     else {
                         printf("outgoing ip is %d\n", ntohl(outgoing->to_ip));
-                        arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC, incoming->iface);
+                        temp_entry = arpq_add_entry(&sr_arp_queue, outgoing->iface, outgoing, outgoing->to_ip, outgoing->ip_len, incoming->from_MAC, incoming->iface);
                     }
-                    struct sr_if *out_interface = outgoing->iface;
-                
-                    //destroy_frame_t(outgoing);
                     free(outgoing->frame);
                     
                     /* make ARP request */
                     outgoing = arp_create(sr, outgoing, outgoing->iface, ARP_REQUEST); //send datagram will now point to an ARP packet, not to the IP datagram 
+                    if (temp_entry){
+                        temp_entry->arpq_next_hop = outgoing->to_ip;
+                    }
                     printf("sending ARP request\n");
                 }
                 else{
@@ -1182,7 +1184,6 @@ void sr_handlepacket(struct sr_instance* sr,
         
         struct sr_arphdr *arp_header = incoming->arp_header;
         
-        //if( ntohs(arp_header->ar_hrd) != ARPHDR_ETHER || ntohs(arp_header->ar_pro) != ETHERTYPE_IP) return;
         
         uint8_t in_cache = 0;
         
@@ -1205,7 +1206,7 @@ void sr_handlepacket(struct sr_instance* sr,
                     printf("added to cache\n");
                     printf("ip is %d\n", ntohl(arp_header->ar_sip));
                     struct arpq_entry *new_ent;
-                    if( new_ent = arp_queue_lookup(sr_arp_queue.first, arp_header->ar_sip) )
+                    if( new_ent = arpq_next_hop_lookup(sr_arp_queue.first, arp_header->ar_sip) )
                         arpq_entry_clear(sr, &sr_arp_queue, new_ent, arp_header->ar_sha);
                 }
                 else perror("ARP request not added to cache");
