@@ -1,12 +1,12 @@
 Readme for sachs_sandler sr router
 
-We use three main data structures: the sr_arp_queue, the sr_arp_cache, and the frame_t
+We use three main data structures: the sr_arp_queue, the sr_arp_cache, and the frame_t.
 
-The frame_t is used for every frame we recieve, and its creation and filled out fields determine the flow of handlepacket
-It exists to make it easier to access things already in the frames, i.e. accessing various headers and such
+The frame_t is used for every frame we receive, and which of its fields are filled out helps to determine the flow of handlepacket
+It exists to make it easier to access things already in the frames--for instance, it includes destination and source IPs, pointers of the correct type to ethernet, IP and ICMP frames, etc.
 
 The cache and queue are linked lists of entries.  Furthermore, the queue entries contain their own linked lists of
-all the queued packets for a given destination IP
+all the queued packets (queued frame_t's, specifically) for a given destination IP
 
 We first create a frame_t struct for the incoming packet.
 
@@ -22,11 +22,23 @@ We first perform sanity checks on version and checksum.
 We then look to see if we are the destination, or if we need to route the packet.
 If we are the destination, we determine if it's an ICMP packet or not.
 If it is, and it's an echo request, we send the echo reply with generate_icmp_echo. It drops other ICMP packets.
-If it's not ICMP, we create a port unreachable datagram with generate_icmp_error
+If it's not ICMP, we create a port unreachable datagram with generate_icmp_error.
 
 If we're not the destination, we need to route the packet.
 First we check for timeout, and if it has timed our we generate a time exceeded message with generate_icmp_error
-Otherwise, decrement ttl, and update the checksum, using update_ip_header.  This also determines the IP of the next hop
+Otherwise, decrement ttl, and update the checksum, using update_ip_header.  This also determines checks the routing table to the IP of the next hop.
 
-We then check the ARP cache.  If it's not in the cache, we use arp_queue_lookup to see if there are other queued packets for this dest.
-Then either add the packet to the arpq_entry if there are other packets, or create a new entry if there aren't.
+We then check the ARP cache with arp_cache_lookup.  If it's not in the cache, we use arp_queue_lookup to see if there are other queued packets for this dest.
+
+Then we either add the packet to the preexisting arpq_entry if there are other packets (using arpq_add_packet), or create a new entry if there aren't (with arpq_add_entry). It then creates an ARP request using arp_create.
+
+If it is in the cache, we update the ethernet header accordingly.
+
+ARP:
+
+We first update the cache based on the ARP packet. If an entry already exists for that IP address, we just copy the new MAC address into that entry and reset the timeout using arp_cache_update. If an entry doesn't already exist, we create one using arp_cache_add. We then call arpq_next_hop_lookup to se whether any of the queued packets are waiting on the IP address that just came in. If so, we update their ethernet headers and send them out with arpq_entry_clear. 
+
+If the ARP packet is a request, we generate a response with arp_create.
+
+Finally, if we have generated an ARP or ICMP packet, or if the incoming IP datagram is ready to be routed, we send it out at the very end of sr_handlepacket.
+

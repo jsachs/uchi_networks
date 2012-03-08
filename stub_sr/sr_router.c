@@ -28,6 +28,7 @@
 #define ARP_MAX_REQ 5
 #define ETHER_ADDR_LEN 6
 #define ICMP_HDR_LEN 8
+#define IP_HDR_LEN   20
 #define ICMP_DATA_LEN 8
 #define ETHER_HDR_LEN 42 
 #define ARP_CACHE_TIMEOUT 15
@@ -648,7 +649,7 @@ static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t ic
     memcpy(outgoing->to_MAC, incoming->from_MAC, ETHER_ADDR_LEN);
     outgoing->iface = incoming->iface;
     outgoing->ip_len = outgoing->len - sizeof(struct sr_ethernet_hdr);
-    outgoing->ip_hl = 20; //yep, it's a magic number
+    outgoing->ip_hl = IP_HDR_LEN;
     
     /* fill out icmp header */
     outgoing->icmp_header->icmp_type = icmp_type;
@@ -1141,9 +1142,6 @@ void sr_handlepacket(struct sr_instance* sr,
                             {
                                 struct frame_t *arp_req;
                                 struct queued_packet *old_packet = entry->arpq_packets.first;
-                                arp_req = arp_create(sr, old_packet->outgoing, old_packet->outgoing->iface, ARP_REQUEST);
-                                sr_send_packet(sr, (uint8_t *)arp_req->frame, arp_req->len, old_packet->outgoing->iface->name);
-                                destroy_frame_t(arp_req);
                                 entry->arpq_last_req = time(NULL);
                                 entry->arpq_num_reqs++;
                             }
@@ -1218,7 +1216,7 @@ void sr_handlepacket(struct sr_instance* sr,
     }
     else perror("Unknown protocol");
         
-    //encapsulate and send datagram, if appropriate
+    //send datagram, if appropriate
     if (outgoing != NULL){ 
         sr_send_packet(sr, (uint8_t *)outgoing->frame, outgoing->len, outgoing->iface->name);
         printf("sent packet of length %d on iface %s\n", outgoing->len, outgoing->iface->name);
