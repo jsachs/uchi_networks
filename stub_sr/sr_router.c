@@ -217,7 +217,7 @@ static struct frame_t *create_frame_t(struct sr_instance *sr, void *frame, size_
  * Memory cleanup
  *----------------------------------------------------------------------*/
 void destroy_frame_t(struct frame_t *frame){
-    //free(frame->frame);
+    free(frame->frame);
     free(frame);
 }
 
@@ -232,7 +232,7 @@ void destroy_arpq_entry(struct arpq_entry *entry){
     while (packet){
         destroy_frame_t(packet->outgoing);
         nextpacket = packet->next;
-        free(packet);
+        destroy_packet(packet);
         packet = nextpacket;
     }
     free(entry);
@@ -1130,8 +1130,6 @@ void sr_handlepacket(struct sr_instance* sr,
                                 arpq_packets_icmpsend(sr, &entry->arpq_packets);
                                 free(entry);
                                 
-                                // TODO send an ICMP host unreachable, but can we use one of our functions here?
-                                
                                 return;
                             }
                             else if (entry->arpq_packets.first)
@@ -1146,7 +1144,7 @@ void sr_handlepacket(struct sr_instance* sr,
                             }
                         }
                         assert( (entry->arpq_packets).first );
-                        if (!arpq_add_packet(entry, packet, len, NULL, NULL)) // TODO what should these arguments be?
+                        if (!arpq_add_packet(entry, packet, len, incoming->from_MAC, incoming->iface))
                             printf("ARP queue packet add failed\n");
                     }
                     /* else, there are no outstanding ARP requests for this particular IP */
