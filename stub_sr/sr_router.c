@@ -30,7 +30,7 @@
 #define ICMP_HDR_LEN 8
 #define ICMP_DATA_LEN 8
 #define ARP_CACHE_TIMEOUT 15
-#define ARP_REQUEST_TIMEOUT 200
+#define ARP_REQUEST_TIMEOUT 1
 #define INIT_TTL 255
 
 /* define some constants for ICMP types/codes and probably some other codes later on */
@@ -289,7 +289,7 @@ void sr_init(struct sr_instance* sr)
 static void compute_icmp_checksum(struct frame_t *frame)
 {
     struct icmp_hdr *icmp_header = frame->icmp_header;
-    int len = frame->len - sizeof(struct sr_ethernet_hdr) - frame->ip_hl;
+    int len = frame->ip_len - frame->ip_hl;
     int count = len / 2;
     
     if (!len%2) len++;
@@ -632,7 +632,7 @@ static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t ic
     memcpy(outgoing->to_MAC, incoming->from_MAC, ETHER_ADDR_LEN);
     outgoing->iface = incoming->iface;
     outgoing->ip_len = outgoing->len - sizeof(struct sr_ethernet_hdr);
-    outgoing->ip_hl = 5;
+    outgoing->ip_hl = 20; //yep, it's a magic number
     
     /* fill out icmp header */
     outgoing->icmp_header->icmp_type = icmp_type;
@@ -641,7 +641,7 @@ static struct frame_t *generate_icmp_error(struct frame_t *incoming, uint16_t ic
     outgoing->icmp_header->icmp_sum = 0;
     
     /* copy data into header: packet includes IP header, ICMP header, and beginning of original packet */
-    void *icmp_data = outgoing->icmp_header + sizeof(struct icmp_hdr);
+    void *icmp_data = (void *)outgoing->icmp_header + sizeof(struct icmp_hdr);
     assert(icmp_data);
     memcpy(icmp_data, incoming->ip_header, icmp_data_len);
     
@@ -846,6 +846,15 @@ void arpq_packets_icmpsend(struct sr_instance *sr, struct packetq *arpq_packets)
     struct frame_t *ICMP_err;
     
     while(current_packet){
+        //first, make sure current packet isn't an ICMP error message itself
+        if (current_packet->outgoing->ip_header->ip_p == IPPROTO_ICMP){
+            current_packet->outgoing->icmp_header = ((void *) current_packet->outgoing->ip_header + 
+                                                     current_packet->outgoing->ip_hl);
+            uint8_t code = current_packet->outgoing->icmp_header->icmp_type;
+            if (code == DEST_UNREACH || code == TIME_EXCEEDED || code == 12 || code == 31)
+                //12 and 31 indicate bad IP header and datagram conversion error, respectively
+                continue;
+        }
         //get back old info so we can send it back the way it came
         current_packet->outgoing->iface = current_packet->from_iface;
         memcpy(current_packet->outgoing->from_MAC, current_packet->from_MAC, ETHER_ADDR_LEN);
@@ -1043,6 +1052,9 @@ void sr_handlepacket(struct sr_instance* sr,
             return;
         }
         
+        //set checksum back to what it was
+        compute_ip_checksum(incoming);
+        
 
         /* Are we the destination? */
         if (iface = if_dst_check(sr, incoming->to_ip)){  //we could change this to just take incoming and then get to_ip
@@ -1066,8 +1078,20 @@ void sr_handlepacket(struct sr_instance* sr,
         else {
             /* Has it timed out? */
             if (incoming->ip_header->ip_ttl <= 0){
-                outgoing = generate_icmp_error(incoming, TIME_EXCEEDED, TIME_INTRANSIT);
-                printf("Slowpoke. TTL exceeded.\n");
+                int err = 0;
+                //make sure it's not an ICMP error packet alrady
+                if (incoming->ip_header->ip_p == IPPROTO_ICMP){
+                    incoming->icmp_header = ((void *) incoming->ip_header + 
+                                                             incoming->ip_hl);
+                    uint8_t code = incoming->icmp_header->icmp_type;
+                    if (code == DEST_UNREACH || code == TIME_EXCEEDED || code == 12 || code == 31)
+                        //12 and 31 indicate bad IP header and datagram conversion error, respectively
+                        err = 1;
+                }
+                if (!err){
+                    outgoing = generate_icmp_error(incoming, TIME_EXCEEDED, TIME_INTRANSIT);
+                    printf("Slowpoke. TTL exceeded.\n");
+                }
             }
             else {
 
